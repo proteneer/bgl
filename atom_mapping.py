@@ -108,10 +108,7 @@ def get_core(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout=10):
                 if dij < chain_cutoff:
                     predicate[idx][jdx] = 1
 
-    dij = cdist(conf_a, conf_b)
-    res = dij < 0.2
-    res = res.astype(np.int32)
-    core = bgl_wrapper.mcs(res, bonds_a, bonds_b, timeout)
+    core = bgl_wrapper.mcs(predicate, bonds_a, bonds_b, timeout)
 
     return core
 
