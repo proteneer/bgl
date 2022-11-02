@@ -67,7 +67,7 @@ public:
         if (get(correspondence_map_1_to_2, vertex_a) != boost::graph_traits<Graph>::null_vertex()) {
           core.push_back(vertex_a);
           core.push_back(get(correspondence_map_1_to_2, vertex_a))  ;
-          std::cout << vertex_a << " <-> " << get(correspondence_map_1_to_2, vertex_a) << std::endl;
+          // std::cout << vertex_a << " <-> " << get(correspondence_map_1_to_2, vertex_a) << std::endl;
         }
       }
 
@@ -105,17 +105,17 @@ Graph make_graph(
   Graph g;
   std::vector<Graph::vertex_descriptor> vertices;
 
-  for(auto i=0; i < num_atoms; i++) {
+  for(size_t i=0; i < num_atoms; i++) {
     Graph::vertex_descriptor v = boost::add_vertex(g);
     vertices.push_back(v);
   }
 
   auto bond_ptr = bonds.data();
-  auto num_bonds = bonds.size()/2;
+  size_t num_bonds = bonds.size()/2;
 
   std::vector<Graph::edge_descriptor> edges;
 
-  for(int i=0; i < num_bonds; i++) {
+  for(size_t i=0; i < num_bonds; i++) {
     int src = bond_ptr[i*2+0];
     int dst = bond_ptr[i*2+1];
     auto edge_result = boost::add_edge(vertices[src], vertices[dst], g);
@@ -126,8 +126,6 @@ Graph make_graph(
     }
 
   }
-
-  std::cout << "Made a graph with " << boost::num_vertices(g) << " vertices and " << boost::num_edges(g) << " edges" << std::endl;
 
   return g;
 }
@@ -183,8 +181,6 @@ const py::array_t<int, py::array::c_style> mcs(
 
     size_t num_atoms_a = predicates.shape()[0];
     size_t num_atoms_b = predicates.shape()[1];
-
-    std::cout << "C++ num_atoms_a " << num_atoms_a << " num_atoms_b " << num_atoms_b << std::endl; 
 
     Graph g_a = make_graph(bonds_a, num_atoms_a);
     Graph g_b = make_graph(bonds_b, num_atoms_b);
