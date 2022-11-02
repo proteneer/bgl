@@ -94,7 +94,7 @@ def get_core(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout=10):
     conf_a = get_romol_conf(mol_a)
     conf_b = get_romol_conf(mol_b)
 
-    predicate = np.zeros((mol_a.GetNumAtoms(), mol_b.GetNumAtoms()))
+    predicate = np.zeros((mol_a.GetNumAtoms(), mol_b.GetNumAtoms()), dtype=np.int32)
 
     for idx, a_xyz in enumerate(conf_a):
         atom_i = mol_a.GetAtomWithIdx(idx)
