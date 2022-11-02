@@ -73,6 +73,9 @@ public:
 
       result_->core = core;
 
+      // tbd: only accept if we satisfy chiral restraints
+      // tbd: add support for additional cores
+      
     }
     auto end = std::chrono::steady_clock::now();
     return std::chrono::duration_cast<std::chrono::seconds>(end - start_).count() < timeout_;
