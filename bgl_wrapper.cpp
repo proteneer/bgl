@@ -38,9 +38,10 @@ struct MCSResult {
 
 
 public:
-  MCSResult() : largest(0) {};
+  MCSResult() : largest(0), last_update(std::chrono::steady_clock::now()) {};
 
   VertexSize largest;
+  std::chrono::steady_clock::time_point last_update;
   std::vector<int> core;
 
 };
@@ -49,13 +50,15 @@ struct callback {
 
 public:
 
-  callback(MCSResult *result, int timeout, Graph g_a, Graph g_b) : g_a_(g_a), g_b_(g_b), result_(result), timeout_(timeout), start_(std::chrono::steady_clock::now()) {}
+  callback(MCSResult *result, int timeout, Graph g_a, Graph g_b) : g_a_(g_a), g_b_(g_b), result_(result), timeout_(timeout) {}
 
   template <typename CorrespondenceMapFirstToSecond,
             typename CorrespondenceMapSecondToFirst>
   bool operator()(CorrespondenceMapFirstToSecond correspondence_map_1_to_2,
                   CorrespondenceMapSecondToFirst correspondence_map_2_to_1,
                   VertexSize subgraph_size) {
+
+    auto now = std::chrono::steady_clock::now();
 
     // Print the graph out to the console
     if(subgraph_size > result_->largest) {
@@ -75,10 +78,13 @@ public:
 
       // tbd: only accept if we satisfy chiral restraints
       // tbd: add support for additional cores
-      
+      // reset time
+      result_->last_update = std::chrono::steady_clock::now();
+      return true;
     }
-    auto end = std::chrono::steady_clock::now();
-    return std::chrono::duration_cast<std::chrono::seconds>(end - start_).count() < timeout_;
+    
+    return std::chrono::duration_cast<std::chrono::seconds>(now - result_->last_update).count() < timeout_;
+        
   }
 
 private:
@@ -87,7 +93,6 @@ private:
   Graph g_b_;
   MCSResult *result_;
   int timeout_;
-  std::chrono::steady_clock::time_point start_;
 
 };
 
@@ -156,10 +161,10 @@ public:
     const boost::graph_traits<Graph>::vertex_descriptor &first,
     const boost::graph_traits<Graph>::vertex_descriptor &second) {
 
-      size_t num_atoms_a = predicates_.shape()[0];
+      // size_t num_atoms_a = predicates_.shape()[0];
       size_t num_atoms_b = predicates_.shape()[1];
 
-      auto idx = first*num_atoms_b + second;
+      size_t idx = first*num_atoms_b + second;
       auto pred_ptr = predicates_.data();
 
       if(idx >= predicates_.size()) {
@@ -188,7 +193,8 @@ const py::array_t<int, py::array::c_style> mcs(
     MCSResult result;
     callback user_callback(&result, timeout, g_a, g_b);
 
-    boost::mcgregor_common_subgraphs_unique(
+    // boost::mcgregor_common_subgraphs_unique(
+    boost::mcgregor_common_subgraphs(
       g_a,
       g_b,
       boost::get(boost::vertex_index, g_a),
