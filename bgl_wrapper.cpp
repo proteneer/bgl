@@ -7,6 +7,7 @@
 // http://www.boost.org/LICENSE_1_0.txt)
 //=======================================================================
 
+#include <stdexcept>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -19,169 +20,108 @@
 #include <boost/graph/mcgregor_common_subgraphs.hpp>
 #include <boost/property_map/shared_array_property_map.hpp>
 
-template <typename Graph>
-struct example_callback {
 
-  typedef typename boost::graph_traits<Graph>::vertices_size_type VertexSizeFirst;
+/// define the boost-graph
+typedef boost::adjacency_list<
+  boost::vecS,
+  boost::vecS,
+  boost::undirectedS> Graph;
 
-  example_callback(const Graph& graph1) :
-    m_graph1(graph1) { }
+typedef typename boost::graph_traits<Graph>::vertices_size_type VertexSize;
+
+
+#include <chrono>
+
+
+// tbd: thread-safety?
+struct MCSResult {
+
+
+public:
+  MCSResult() : largest(0) {};
+
+  VertexSize largest;
+  std::vector<int> core;
+
+};
+
+struct callback {
+
+public:
+
+  callback(MCSResult *result, int timeout, Graph g_a, Graph g_b) : g_a_(g_a), g_b_(g_b), result_(result), timeout_(timeout), start_(std::chrono::steady_clock::now()) {}
 
   template <typename CorrespondenceMapFirstToSecond,
             typename CorrespondenceMapSecondToFirst>
   bool operator()(CorrespondenceMapFirstToSecond correspondence_map_1_to_2,
                   CorrespondenceMapSecondToFirst correspondence_map_2_to_1,
-                  VertexSizeFirst subgraph_size) {
-
-    // Fill membership map for first graph
-    typedef typename boost::property_map<Graph, boost::vertex_index_t>::type VertexIndexMap;
-    typedef boost::shared_array_property_map<bool, VertexIndexMap> MembershipMap;
-      
-    MembershipMap membership_map1(num_vertices(m_graph1),
-                                  get(boost::vertex_index, m_graph1));
-
-    boost::fill_membership_map<Graph>(m_graph1, correspondence_map_1_to_2, membership_map1);
-
-    // Generate filtered graphs using membership map
-    typedef typename boost::membership_filtered_graph_traits<Graph, MembershipMap>::graph_type
-      MembershipFilteredGraph;
-
-    MembershipFilteredGraph subgraph1 =
-      make_membership_filtered_graph(m_graph1, membership_map1);
+                  VertexSize subgraph_size) {
 
     // Print the graph out to the console
-    std::cout << "Found common subgraph (size " << subgraph_size << ")" << std::endl;
-    // print_graph(subgraph1);
-    // std::cout << std::endl;
+    if(subgraph_size > result_->largest) {
+      std::cout << this << " | found larger common subgraph of size " << subgraph_size << std::endl;
+      result_->largest = subgraph_size;
+      std::vector<int> core;
+      BGL_FORALL_VERTICES_T(vertex_a, g_a_, Graph) {
+        // Skip unmapped vertices
+        if (get(correspondence_map_1_to_2, vertex_a) != boost::graph_traits<Graph>::null_vertex()) {
+          core.push_back(vertex_a);
+          core.push_back(get(correspondence_map_1_to_2, vertex_a))  ;
+          std::cout << vertex_a << " <-> " << get(correspondence_map_1_to_2, vertex_a) << std::endl;
+        }
+      }
 
-    // Explore the entire space
-    return (true);
+      result_->core = core;
+
+    }
+    auto end = std::chrono::steady_clock::now();
+    return std::chrono::duration_cast<std::chrono::seconds>(end - start_).count() < timeout_;
   }
 
 private:
-  const Graph& m_graph1;
-  VertexSizeFirst m_max_subgraph_size;
+
+  Graph g_a_;
+  Graph g_b_;
+  MCSResult *result_;
+  int timeout_;
+  std::chrono::steady_clock::time_point start_;
+
 };
 
-
-/*
-int main (int argc, char *argv[]) {
-
-  // Using a vecS graph here so that we don't have to mess around with
-  // a vertex index map; it will be implicit.
-  typedef adjacency_list<listS, vecS, directedS,
-    property<vertex_name_t, unsigned int,
-    property<vertex_index_t, unsigned int> >,
-    property<edge_name_t, unsigned int> > Graph;
-
-  typedef graph_traits<Graph>::vertex_descriptor Vertex;
-  typedef graph_traits<Graph>::edge_descriptor Edge;
-
-  typedef property_map<Graph, vertex_name_t>::type VertexNameMap;
-  typedef property_map<Graph, edge_name_t>::type EdgeNameMap;
-
-  // Test maximum and unique variants on known graphs
-  Graph graph_simple1, graph_simple2;
-  example_callback<Graph> user_callback(graph_simple1);
-
-  VertexNameMap vname_map_simple1 = get(vertex_name, graph_simple1);
-  VertexNameMap vname_map_simple2 = get(vertex_name, graph_simple2);
-
-  // Graph that looks like a triangle
-  put(vname_map_simple1, add_vertex(graph_simple1), 1);
-  put(vname_map_simple1, add_vertex(graph_simple1), 2);
-  put(vname_map_simple1, add_vertex(graph_simple1), 3);
-
-  add_edge(0, 1, graph_simple1);
-  add_edge(0, 2, graph_simple1);
-  add_edge(1, 2, graph_simple1);
-
-  std::cout << "First graph:" << std::endl;
-  print_graph(graph_simple1);
-  std::cout << std::endl;
-
-  // Triangle with an extra vertex
-  put(vname_map_simple2, add_vertex(graph_simple2), 1);
-  put(vname_map_simple2, add_vertex(graph_simple2), 2);
-  put(vname_map_simple2, add_vertex(graph_simple2), 3);
-  put(vname_map_simple2, add_vertex(graph_simple2), 4);
-
-  add_edge(0, 1, graph_simple2);
-  add_edge(0, 2, graph_simple2);
-  add_edge(1, 2, graph_simple2);
-  add_edge(1, 3, graph_simple2);
-
-  std::cout << "Second graph:" << std::endl;
-  print_graph(graph_simple2);
-  std::cout << std::endl;
-
-  // All subgraphs
-  std::cout << "mcgregor_common_subgraphs:" << std::endl;
-  mcgregor_common_subgraphs
-    (graph_simple1, graph_simple2, true, user_callback,
-     vertices_equivalent(make_property_map_equivalent(vname_map_simple1, vname_map_simple2))); 
-  std::cout << std::endl;
-
-  // Unique subgraphs
-  std::cout << "mcgregor_common_subgraphs_unique:" << std::endl;
-  mcgregor_common_subgraphs_unique
-    (graph_simple1, graph_simple2, true, user_callback,
-     vertices_equivalent(make_property_map_equivalent(vname_map_simple1, vname_map_simple2))); 
-  std::cout << std::endl;
-
-  // Maximum subgraphs
-  std::cout << "mcgregor_common_subgraphs_maximum:" << std::endl;
-  mcgregor_common_subgraphs_maximum
-    (graph_simple1, graph_simple2, true, user_callback,
-     vertices_equivalent(make_property_map_equivalent(vname_map_simple1, vname_map_simple2))); 
-  std::cout << std::endl;
-
-  // Maximum, unique subgraphs
-  std::cout << "mcgregor_common_subgraphs_maximum_unique:" << std::endl;
-  mcgregor_common_subgraphs_maximum_unique
-    (graph_simple1, graph_simple2, true, user_callback,
-     vertices_equivalent(make_property_map_equivalent(vname_map_simple1, vname_map_simple2))); 
-
-  return 0;
-}
-*/
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
 #include <vector>
 
-
 namespace py = pybind11;
 
+Graph make_graph(
+  const py::array_t<int, py::array::c_style> &bonds,
+  size_t num_atoms) {
+  Graph g;
+  std::vector<Graph::vertex_descriptor> vertices;
 
-// ----------------
-// Regular C++ code
-// ----------------
-
-
-boost::adjacency_list<> make_graph(const py::array_t<int, py::array::c_style> &bonds, size_t num_atoms) {
-  boost::adjacency_list<> g;
-  std::vector<boost::adjacency_list<>::vertex_descriptor> vertices;
   for(auto i=0; i < num_atoms; i++) {
-    boost::adjacency_list<>::vertex_descriptor v = boost::add_vertex(g);
+    Graph::vertex_descriptor v = boost::add_vertex(g);
     vertices.push_back(v);
   }
 
-  auto ptr = bonds.data();
+  auto bond_ptr = bonds.data();
   auto num_bonds = bonds.size()/2;
 
-  std::vector<boost::adjacency_list<>::edge_descriptor> edges;
-
-    
+  std::vector<Graph::edge_descriptor> edges;
 
   for(int i=0; i < num_bonds; i++) {
-    int src = ptr[i*2+0];
-    int dst = ptr[i*2+1];
+    int src = bond_ptr[i*2+0];
+    int dst = bond_ptr[i*2+1];
     auto edge_result = boost::add_edge(vertices[src], vertices[dst], g);
     edges.push_back(edge_result.first);
-    // tbd: assert edge_result.second returns True
-    // g.add_edge(src, dst)
+
+    if(edge_result.second != true) {
+      throw std::runtime_error("bad edge");
+    }
+
   }
 
   std::cout << "Made a graph with " << boost::num_vertices(g) << " vertices and " << boost::num_edges(g) << " edges" << std::endl;
@@ -189,56 +129,87 @@ boost::adjacency_list<> make_graph(const py::array_t<int, py::array::c_style> &b
   return g;
 }
 
-// multiply all entries by 2.0
-// input:  std::vector ([...]) (read only)
-// output: std::vector ([...]) (new copy)
+struct edge_always_equivalent {
+
+  template <typename ItemFirst,
+            typename ItemSecond>
+  bool operator()(const ItemFirst&, const ItemSecond&) {
+    return true;
+  }
+};
+
+struct atom_predicate {
+
+private:
+
+  const py::array_t<int, py::array::c_style> &predicates_;
+
+public:
+
+  atom_predicate(
+    const py::array_t<int, py::array::c_style> &predicates
+    ) : 
+    predicates_(predicates) {};
+
+  bool operator() (
+    const boost::graph_traits<Graph>::vertex_descriptor &first,
+    const boost::graph_traits<Graph>::vertex_descriptor &second) {
+
+      size_t num_atoms_a = predicates_.shape()[0];
+      size_t num_atoms_b = predicates_.shape()[1];
+
+      auto idx = first*num_atoms_b + second;
+      auto pred_ptr = predicates_.data();
+
+      if(idx >= predicates_.size()) {
+        throw std::runtime_error("OOB");
+      }
+      bool result = pred_ptr[idx];
+
+      return result;
+
+  }
+};
+
+
 const py::array_t<int, py::array::c_style> mcs(
-  const py::array_t<double, py::array::c_style> &coords_a,
+  const py::array_t<int, py::array::c_style> &predicates,
   const py::array_t<int, py::array::c_style> &bonds_a,
-  const py::array_t<double, py::array::c_style> &coords_b,
   const py::array_t<int, py::array::c_style> &bonds_b,
-  float threshold) {
+  int timeout) {
 
+    size_t num_atoms_a = predicates.shape()[0];
+    size_t num_atoms_b = predicates.shape()[1];
 
-    size_t num_atoms_a = coords_a.size() / 3;
-    size_t num_atoms_b = coords_b.size() / 3;
+    std::cout << "C++ num_atoms_a " << num_atoms_a << " num_atoms_b " << num_atoms_b << std::endl; 
 
-    boost::adjacency_list<> g_a = make_graph(bonds_a, num_atoms_a);
-    boost::adjacency_list<> g_b = make_graph(bonds_b, num_atoms_b);
+    Graph g_a = make_graph(bonds_a, num_atoms_a);
+    Graph g_b = make_graph(bonds_b, num_atoms_b);
 
-    example_callback<boost::adjacency_list<> > user_callback(g_a);
+    MCSResult result;
+    callback user_callback(&result, timeout, g_a, g_b);
 
-    // boost::mcgregor_common_subgraphs_maximum(
-    boost::mcgregor_common_subgraphs_maximum_unique(
+    boost::mcgregor_common_subgraphs_unique(
       g_a,
       g_b,
+      boost::get(boost::vertex_index, g_a),
+      boost::get(boost::vertex_index, g_b),
+      edge_always_equivalent(),
+      atom_predicate(predicates),
       true,
       user_callback
     ); 
-  // std::vector<double> output;
 
-  // std::transform(
-  //   input.begin(),
-  //   input.end(),
-  //   std::back_inserter(output),
-  //   [](double x) -> double { return 2.*x; }
-  // );
+  int num_core_atoms = result.core.size()/2;
 
-  // N.B. this is equivalent to (but there are also other ways to do the same)
-  //
-  // std::vector<double> output(input.size());
-  //
-  // for ( size_t i = 0 ; i < input.size() ; ++i )
-  //   output[i] = 2. * input[i];
+  py::array_t<int, py::array::c_style> core({num_core_atoms, 2});
 
-  // return output;
-  py::array_t<int, py::array::c_style> foo;
-  return foo;
+  for(int i=0; i < core.size(); i++) {
+    core.mutable_data()[i] = result.core[i];
+  }
+
+  return core;
 }
-
-// ----------------
-// Python interface
-// ----------------
 
 namespace py = pybind11;
 

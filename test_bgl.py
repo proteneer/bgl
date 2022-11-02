@@ -5,6 +5,9 @@ from rdkit.Chem import AllChem
 
 import numpy as np
 import networkx as nx
+from scipy.spatial.distance import cdist
+
+import atom_mapping
 
 def get_romol_conf(mol):
     conformer = mol.GetConformer(0)
@@ -22,19 +25,40 @@ def get_romol_bonds(mol):
 
 mols = Chem.SDMolSupplier(
     "/Users/yzhao/Code/timemachine/timemachine/testsystems/data/ligands_40.sdf",
-    # removeHs=True
+    removeHs=False
 )
 
-# mols = [
-#     Chem.MolFromSmiles("C1CCC1CCCC"),
-#     Chem.MolFromSmiles("CC1CCCC1CCC"),
-# ]
-# for m in mols:
-    # AllChem.EmbedMolecule(m)
+mol_a = mols[0]
+mol_b = mols[1]
 
-bonds_a = get_romol_bonds(mols[0])
-bonds_b = get_romol_bonds(mols[1])
-conf_a = get_romol_conf(mols[0])
-conf_b = get_romol_conf(mols[1])
+bonds_a = get_romol_bonds(mol_a)
+bonds_b = get_romol_bonds(mol_b)
+conf_a = get_romol_conf(mol_a)
+conf_b = get_romol_conf(mol_b)
 
-bgl_wrapper.mcs(conf_a, bonds_a, conf_b, bonds_b, 0.2)
+dij = cdist(conf_a, conf_b)
+res = dij < 0.2
+res = res.astype(np.int32)
+
+print("num_atoms_a", mol_a.GetNumAtoms(), "num_bonds_a", len(bonds_a))
+print("num_atoms_b", mol_b.GetNumAtoms(), "num_bonds_b", len(bonds_b))
+print("dij shape", res.shape)
+
+for line in res:
+    print(line)
+
+timeout = 10
+
+core = bgl_wrapper.mcs(res, bonds_a, bonds_b, timeout)
+
+res = atom_mapping.plot_atom_mapping_grid(mol_a, mol_b, core)
+
+
+def get_mol_name(mol) -> str:
+    """Return the title for the given mol"""
+    return mol.GetProp("_Name")
+
+with open(f"atom_mapping_{get_mol_name(mol_a)}_to_{get_mol_name(mol_b)}.svg", "w") as fh:
+    fh.write(res)
+
+print(core)
