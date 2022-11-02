@@ -61,7 +61,7 @@ def get_romol_bonds(mol):
     return np.array(bonds, dtype=np.int32)
 
 
-def get_core(mol_a, mol_b, ring_cutoff, chain_cutoff):
+def get_core(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout=10):
     """
     Find a reasonable core between two molecules. This function takes in two cutoff parameters:
 
@@ -113,7 +113,6 @@ def get_core(mol_a, mol_b, ring_cutoff, chain_cutoff):
     dij = cdist(conf_a, conf_b)
     res = dij < 0.2
     res = res.astype(np.int32)
-    timeout = 10  # in seconds
     core = bgl_wrapper.mcs(res, bonds_a, bonds_b, timeout)
 
     return core
