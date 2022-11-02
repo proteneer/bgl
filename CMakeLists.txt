@@ -15,7 +15,7 @@ if(NOT EXISTS ${BOOST_DIR})
   execute_process(COMMAND tar xvf boost.tar.gz)
 endif()
 
-include_directories((${BOOST_DIR}/boost))
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/${BOOST_DIR})
 
 if(NOT EXISTS ${PYBIND_SRC_DIR})
   execute_process(COMMAND git clone --branch v2.6 https://github.com/pybind/pybind11.git ${PYBIND_SRC_DIR})
