@@ -59,7 +59,7 @@ public:
 
     // Print the graph out to the console
     if(subgraph_size > result_->largest) {
-      std::cout << this << " | found larger common subgraph of size " << subgraph_size << std::endl;
+      // std::cout << this << " | found larger common subgraph of size " << subgraph_size << std::endl;
       result_->largest = subgraph_size;
       std::vector<int> core;
       BGL_FORALL_VERTICES_T(vertex_a, g_a_, Graph) {

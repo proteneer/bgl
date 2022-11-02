@@ -1,8 +1,6 @@
 import numpy as np
-from numpy.typing import NDArray
 from rdkit import Chem
-from rdkit.Chem import AllChem, Draw
-from rdkit.Chem.Draw import rdMolDraw2D
+from rdkit.Chem import Draw
 
 from scipy.spatial.distance import cdist
 from scipy.stats import special_ortho_group
@@ -23,7 +21,7 @@ def score_2d(conf, norm=2):
     return score / len(conf)
 
 
-def generate_good_rotations(mol_a, mol_b, num_rotations=3, max_rotations=100):
+def generate_good_rotations(mol_a, mol_b, num_rotations=3, max_rotations=1000):
 
     assert num_rotations < max_rotations
 
