@@ -220,7 +220,7 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(bgl_wrapper,m)
 {
-  m.doc() = "pybind11 example plugin";
+  m.doc() = "boost::mcgregor_common_subgraphs wrapper";
 
-  m.def("mcs", &mcs, "Multiply all entries of a list by 2.0");
+  m.def("mcs", &mcs, "maximum common substructure (respecting pairwise atom predicates)");
 }
