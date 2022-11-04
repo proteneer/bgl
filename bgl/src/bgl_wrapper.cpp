@@ -1,12 +1,4 @@
-//=======================================================================
-// Copyright 2009 Trustees of Indiana University.
-// Authors: Michael Hansen
-//
-// Distributed under the Boost Software License, Version 1.0. (See
-// accompanying file LICENSE_1_0.txt or copy at
-// http://www.boost.org/LICENSE_1_0.txt)
-//=======================================================================
-
+#include <chrono>
 #include <stdexcept>
 #include <fstream>
 #include <iostream>
@@ -20,7 +12,6 @@
 #include <boost/graph/mcgregor_common_subgraphs.hpp>
 #include <boost/property_map/shared_array_property_map.hpp>
 
-
 /// define the boost-graph
 typedef boost::adjacency_list<
   boost::vecS,
@@ -29,13 +20,8 @@ typedef boost::adjacency_list<
 
 typedef typename boost::graph_traits<Graph>::vertices_size_type VertexSize;
 
-
-#include <chrono>
-
-
 // tbd: thread-safety?
 struct MCSResult {
-
 
 public:
   MCSResult() : largest(0), last_update(std::chrono::steady_clock::now()) {};
@@ -142,6 +128,7 @@ struct edge_always_equivalent {
   bool operator()(const ItemFirst&, const ItemSecond&) {
     return true;
   }
+
 };
 
 struct atom_predicate {
@@ -251,23 +238,25 @@ const py::array_t<int, py::array::c_style> mcs(
     size_t num_atoms_a = predicates.shape()[0];
     size_t num_atoms_b = predicates.shape()[1];
 
+    // check that initial_core satisifies given predicates
+    for(int i=0; i < initial_core.size()/2; i++) {
+      int a = initial_core.data()[i*2+0];
+      int b = initial_core.data()[i*2+1];
+      int pred = predicates.data()[a*num_atoms_b + b];
+      if(!pred) {
+        throw std::runtime_error("Initial core predicate fails to satisfy given predicate.");
+      }
+    }
+
+
     Graph g_a = make_graph(bonds_a, num_atoms_a);
     Graph g_b = make_graph(bonds_b, num_atoms_b);
 
     MCSResult result;
     callback user_callback(&result, timeout, g_a, g_b);
 
-    // check that initial_core satisifies given predicates
-    for(int i=0; i < initial_core.size()/2; i++) {
-      int a = initial_core.data()[i*2+0];
-      int b = initial_core.data()[i*2+1];
-      int pred = predicates[a*num_atoms_b + b];
-      if(!pred) {
-        throw std::runtime_error("Initial core predicate fails to satisfy given predicate.")
-      }
-    }
 
-    result = mcgregor_common_subgraphs_v2(
+    mcgregor_common_subgraphs_v2(
       g_a,
       g_b,
       boost::get(boost::vertex_index, g_a),
