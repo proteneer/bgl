@@ -2,7 +2,6 @@ import numpy as np
 from rdkit import Chem
 from rdkit.Chem import Draw
 
-from scipy.spatial.distance import cdist
 from scipy.stats import special_ortho_group
 
 

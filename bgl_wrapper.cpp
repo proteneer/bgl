@@ -7,11 +7,14 @@
 // http://www.boost.org/LICENSE_1_0.txt)
 //=======================================================================
 
-#include <stdexcept>
+#include <chrono>
 #include <fstream>
 #include <iostream>
+#include <stdexcept>
 #include <string>
+#include <vector>
 
+// boost
 #include <boost/lexical_cast.hpp>
 #include <boost/graph/adjacency_list.hpp>
 #include <boost/graph/filtered_graph.hpp>
@@ -20,49 +23,50 @@
 #include <boost/graph/mcgregor_common_subgraphs.hpp>
 #include <boost/property_map/shared_array_property_map.hpp>
 
-
-/// define the boost-graph
-typedef boost::adjacency_list<
-  boost::vecS,
-  boost::vecS,
-  boost::undirectedS> Graph;
-
-typedef typename boost::graph_traits<Graph>::vertices_size_type VertexSize;
+// pybind
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+#include <pybind11/numpy.h>
 
 
-#include <chrono>
+using Graph = boost::adjacency_list<boost::vecS, boost::vecS, boost::undirectedS>;
+using Vertex = Graph::vertex_descriptor;
+using VertexSize = boost::graph_traits<Graph>::vertices_size_type;
+using Edge = Graph::edge_descriptor;
 
+using Clock = std::chrono::steady_clock;
+
+namespace py = pybind11;
+template<class T>
+using PyArray = py::array_t<T, py::array::c_style>;
 
 // tbd: thread-safety?
 struct MCSResult {
 
-
 public:
-  MCSResult() : largest(0), last_update(std::chrono::steady_clock::now()) {};
+  MCSResult() : largest(0), last_update(Clock::now()) {};
 
   VertexSize largest;
-  std::chrono::steady_clock::time_point last_update;
+  Clock::time_point last_update;
   std::vector<int> core;
-
 };
 
 struct callback {
 
 public:
 
-  callback(MCSResult *result, int timeout, Graph g_a, Graph g_b) : g_a_(g_a), g_b_(g_b), result_(result), timeout_(timeout) {}
+  callback(MCSResult *result, int timeout, Graph g_a, Graph g_b) : g_a_(g_a), g_b_(g_b), result_(result), timeout_seconds_(timeout), num_graphs_searched_(0) {}
 
-  template <typename CorrespondenceMapFirstToSecond,
-            typename CorrespondenceMapSecondToFirst>
+  template <typename CorrespondenceMapFirstToSecond, typename Unused>
   bool operator()(CorrespondenceMapFirstToSecond correspondence_map_1_to_2,
-                  CorrespondenceMapSecondToFirst correspondence_map_2_to_1,
+                  Unused unused,
                   VertexSize subgraph_size) {
 
-    auto now = std::chrono::steady_clock::now();
-
-    // Print the graph out to the console
+    auto now = Clock::now();
+    num_graphs_searched_ += 1;
+    
     if(subgraph_size > result_->largest) {
-      // std::cout << this << " | found larger common subgraph of size " << subgraph_size << std::endl;
+      //std::cout << this << " | found larger common subgraph of size " << subgraph_size << std::endl;
       result_->largest = subgraph_size;
       std::vector<int> core;
       BGL_FORALL_VERTICES_T(vertex_a, g_a_, Graph) {
@@ -70,7 +74,9 @@ public:
         if (get(correspondence_map_1_to_2, vertex_a) != boost::graph_traits<Graph>::null_vertex()) {
           core.push_back(vertex_a);
           core.push_back(get(correspondence_map_1_to_2, vertex_a))  ;
-          // std::cout << vertex_a << " <-> " << get(correspondence_map_1_to_2, vertex_a) << std::endl;
+          
+          // Print the graph out to the console
+          //std::cout << vertex_a << " <-> " << get(correspondence_map_1_to_2, vertex_a) << std::endl;
         }
       }
 
@@ -79,12 +85,17 @@ public:
       // tbd: only accept if we satisfy chiral restraints
       // tbd: add support for additional cores
       // reset time
-      result_->last_update = std::chrono::steady_clock::now();
+      result_->last_update = Clock::now();
       return true;
     }
-    
-    return std::chrono::duration_cast<std::chrono::seconds>(now - result_->last_update).count() < timeout_;
-        
+
+    auto seconds_since_last_update = std::chrono::duration_cast<std::chrono::seconds>(now - result_->last_update).count();
+    bool timed_out = seconds_since_last_update > timeout_seconds_;
+    if(timed_out) {
+      std::cout << this << " | timed out! (after " << num_graphs_searched_ << " unique subgraphs considered)" << std::endl;
+    }
+
+    return not timed_out;
   }
 
 private:
@@ -92,44 +103,39 @@ private:
   Graph g_a_;
   Graph g_b_;
   MCSResult *result_;
-  int timeout_;
+  int timeout_seconds_;
+  int num_graphs_searched_;
 
 };
 
 
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
-#include <pybind11/numpy.h>
-#include <vector>
-
-namespace py = pybind11;
-
 Graph make_graph(
-  const py::array_t<int, py::array::c_style> &bonds,
+  const PyArray<int> &bonds,
   size_t num_atoms) {
   Graph g;
-  std::vector<Graph::vertex_descriptor> vertices;
+
+  std::vector<Vertex> vertices;
 
   for(size_t i=0; i < num_atoms; i++) {
-    Graph::vertex_descriptor v = boost::add_vertex(g);
+    auto v = boost::add_vertex(g);
     vertices.push_back(v);
   }
 
   auto bond_ptr = bonds.data();
   size_t num_bonds = bonds.size()/2;
 
-  std::vector<Graph::edge_descriptor> edges;
+  std::vector<Edge> edges;
 
   for(size_t i=0; i < num_bonds; i++) {
     int src = bond_ptr[i*2+0];
     int dst = bond_ptr[i*2+1];
+
     auto edge_result = boost::add_edge(vertices[src], vertices[dst], g);
     edges.push_back(edge_result.first);
 
     if(edge_result.second != true) {
       throw std::runtime_error("bad edge");
     }
-
   }
 
   return g;
@@ -137,34 +143,34 @@ Graph make_graph(
 
 struct edge_always_equivalent {
 
-  template <typename ItemFirst,
-            typename ItemSecond>
+  template <typename ItemFirst, typename ItemSecond>
   bool operator()(const ItemFirst&, const ItemSecond&) {
     return true;
   }
+
 };
 
+// TODO: use copy of python predicates array?
 struct atom_predicate {
 
 private:
 
-  const py::array_t<int, py::array::c_style> &predicates_;
+  const PyArray<int> &predicates_;
 
 public:
 
   atom_predicate(
-    const py::array_t<int, py::array::c_style> &predicates
+    const PyArray<int> &predicates
     ) : 
     predicates_(predicates) {};
 
   bool operator() (
-    const boost::graph_traits<Graph>::vertex_descriptor &first,
-    const boost::graph_traits<Graph>::vertex_descriptor &second) {
+    const Vertex &first,
+    const Vertex &second) {
 
-      // size_t num_atoms_a = predicates_.shape()[0];
       size_t num_atoms_b = predicates_.shape()[1];
-
       size_t idx = first*num_atoms_b + second;
+
       auto pred_ptr = predicates_.data();
 
       if(idx >= predicates_.size()) {
@@ -173,15 +179,14 @@ public:
       bool result = pred_ptr[idx];
 
       return result;
-
   }
 };
 
-
-const py::array_t<int, py::array::c_style> mcs(
-  const py::array_t<int, py::array::c_style> &predicates,
-  const py::array_t<int, py::array::c_style> &bonds_a,
-  const py::array_t<int, py::array::c_style> &bonds_b,
+// TODO: factor mcs from python wrapper
+const PyArray<int> mcs(
+  const PyArray<int> &predicates,
+  const PyArray<int> &bonds_a,
+  const PyArray<int> &bonds_b,
   int timeout) {
 
     size_t num_atoms_a = predicates.shape()[0];
@@ -204,11 +209,9 @@ const py::array_t<int, py::array::c_style> mcs(
       true,
       user_callback
     ); 
-
+  
   int num_core_atoms = result.core.size()/2;
-
-  py::array_t<int, py::array::c_style> core({num_core_atoms, 2});
-
+  PyArray<int> core({num_core_atoms, 2});
   for(int i=0; i < core.size(); i++) {
     core.mutable_data()[i] = result.core[i];
   }
@@ -216,11 +219,9 @@ const py::array_t<int, py::array::c_style> mcs(
   return core;
 }
 
-namespace py = pybind11;
-
+// pybind wrapper
 PYBIND11_MODULE(bgl_wrapper,m)
 {
-  m.doc() = "pybind11 example plugin";
-
-  m.def("mcs", &mcs, "Multiply all entries of a list by 2.0");
+  m.doc() = "boost::mcgregor_common_subgraphs wrapper";
+  m.def("mcs", &mcs, "maximum common substructure (respecting pairwise atom predicates)");
 }
