@@ -20,7 +20,7 @@ def score_2d(conf, norm=2):
     return score / len(conf)
 
 
-def generate_good_rotations(mol_a, mol_b, num_rotations=3, max_rotations=1000):
+def generate_good_rotations(mol_a, mol_b, num_rotations=3, max_rotations=100):
 
     assert num_rotations < max_rotations
 
@@ -60,17 +60,14 @@ def get_romol_bonds(mol):
 def get_core(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout=10):
 
     if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
-        print("swapped")
         all_cores = _get_core_impl(mol_b, mol_a, ring_cutoff, chain_cutoff, timeout)
         new_cores = []
         for core in all_cores:
             core = np.array([(x[1], x[0]) for x in core], dtype=core.dtype)
             new_cores.append(core)
         return new_cores
-
     else:
         all_cores = _get_core_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout)
-    
         return all_cores
         
 
@@ -122,16 +119,6 @@ def _get_core_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout):
             else:
                 if dij < chain_cutoff:
                     predicate[idx][jdx] = 1
-
-
-    # for r in predicate:
-        # print(r)
-
-    print(mol_a.GetAtomWithIdx(22).GetSymbol(), np.argwhere(predicate[22] == 1))
-    print(mol_b.GetAtomWithIdx(0).GetSymbol())
-    print(mol_b.GetAtomWithIdx(27).GetSymbol())
-
-    # assert 0
 
     cores = mcgregor.mcs(predicate, bonds_a, bonds_b, timeout)
 

@@ -113,9 +113,6 @@ def mcs(predicate, bonds_a, bonds_b, timeout):
         core = np.array(sorted(core))
         all_cores.append(core)
 
-    for ac in all_cores:
-        print(ac)
-
     return all_cores
 
 
@@ -137,16 +134,12 @@ def recursion(g1, g2, map_1_to_2, layer, marcs, mcs_result, predicate, start_tim
         if mcs_result.num_edges < num_edges:
             mcs_result.all_maps = [map_1_to_2]
             mcs_result.num_edges = num_edges
-            print("FLUSHING")
         elif mcs_result.num_edges == num_edges:
             # print("Found an equal or better complete map", num_edges, "mapping", sorted(map_1_to_2.items()))
-            print("???FINAL 22->", map_1_to_2[22], "MAP SIZE", len(map_1_to_2), map_1_to_2)
             mcs_result.all_maps.append(map_1_to_2)
         return
 
     if num_edges < mcs_result.num_edges:
-        # if layer == 23:
-            # print("PRUNED 22 MAPPED TO", map_1_to_2[22])
         return
 
     mapped_2_set = set(map_1_to_2.values())
