@@ -52,31 +52,7 @@ def refine_marcs(g1, g2, new_v1, new_v2, marcs):
             #         new_marcs[e1][ej] = 0
         else:
             # v1 is explicitly mapped to None, so we zero out all edges
-            for ej in range(num_b_edges):
-                new_marcs[e1][ej] = 0
-
-    return new_marcs
-
-
-def refine_marcs_inplace(g1, g2, new_v1, new_v2, marcs):
-    """
-    return edges that have changed
-    """
-    new_marcs = marcs.copy()
-    num_b_edges = g2.n_edges
-    for e1 in g1.get_edges(new_v1):
-        # don't if new_v2 here since new_v2 may be zero!
-        if new_v2 is not None:
-            e2 = g2.get_edges(new_v2)
-            # set any non-adjacent edges to zero
-            for ej in range(num_b_edges):
-                if ej not in e2:
-                    new_marcs[e1][ej] = 0
-
-        else:
-            # v1 is explicitly mapped to None, so we zero out all edges
-            for ej in range(num_b_edges):
-                new_marcs[e1][ej] = 0
+            new_marcs[e1, :] = 0
 
     return new_marcs
 
