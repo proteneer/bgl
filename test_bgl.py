@@ -15,6 +15,7 @@ for idx, mol_a in enumerate(mols):
             """Return the title for the given mol"""
             return mol.GetProp("_Name")
 
+        # check ordering of mol_a and mol_b
         with open(f"atom_mapping_{get_mol_name(mol_a)}_to_{get_mol_name(mol_b)}.svg", "w") as fh:
             fh.write(res)
 

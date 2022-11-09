@@ -188,11 +188,11 @@ def recursion(g1, g2, map_1_to_2, layer, marcs, mcs_result, predicate, start_tim
     n_a = g1.n_vertices
     n_b = g2.n_vertices
 
-    assert n_a < n_b
+    assert n_a <= n_b
 
     num_edges = arcs_left(marcs)
 
-    # leaf node may not satisfy this condition if we have
+    # leaf node may not satisfy this condition
     # if layer == n_a:
     #     # leaf node
     #     if mcs_result.num_edges <= num_edges:
