@@ -40,11 +40,13 @@ def refine_marcs(g1, g2, new_v1, new_v2, marcs):
     for e1 in g1.get_edges(new_v1):
         # don't if new_v2 here since new_v2 may be zero!
         if new_v2 is not None:
-            e2 = g2.get_edges(new_v2)
-            # set any non-adjacent edges to zero
-            for ej in range(num_b_edges):
-                if ej not in e2:
-                    new_marcs[e1][ej] = 0
+            # print(new_marcs[e1].dtype, g2.get_edges_as_vector(new_v2).dtype)
+            new_marcs[e1] &= g2.get_edges_as_vector(new_v2)
+            # e2 = g2.get_edges(new_v2)  # note edges are not sorted
+            # # set any non-adjacent edges to zero
+            # for ej in range(num_b_edges):
+            #     if ej not in e2:
+            #         new_marcs[e1][ej] = 0
         else:
             # v1 is explicitly mapped to None, so we zero out all edges
             for ej in range(num_b_edges):
@@ -110,8 +112,17 @@ class Graph:
             self.lol_edges[src].append(edge_idx)
             self.lol_edges[dst].append(edge_idx)
 
+        self.ve_matrix = np.zeros((self.n_vertices, self.n_edges), dtype=np.int32)
+        for vertex_idx, edges in enumerate(self.lol_edges):
+            for edge_idx in edges:
+                self.ve_matrix[vertex_idx][edge_idx] = 1
+
     def get_edges(self, vertex):
         return self.lol_edges[vertex]
+
+    def get_edges_as_vector(self, vertex):
+        # return edges as a boolean vetor
+        return self.ve_matrix[vertex]
 
 
 def mcs(predicate, bonds_a, bonds_b, timeout):
@@ -162,11 +173,11 @@ def recursion(g1, g2, map_1_to_2, layer, marcs, mcs_result, predicate, start_tim
     # every atom has been mapped
     if layer == n_a:
         if mcs_result.num_edges < num_edges:
-            mcs_result.all_maps = [map_1_to_2]
+            mcs_result.all_maps = [copy.deepcopy(map_1_to_2)]
             mcs_result.num_edges = num_edges
         elif mcs_result.num_edges == num_edges:
             # print("Found an equal or better complete map with", num_edges, "edges")
-            mcs_result.all_maps.append(map_1_to_2)
+            mcs_result.all_maps.append(copy.deepcopy(map_1_to_2))
         return
 
     if num_edges < mcs_result.num_edges:
@@ -178,19 +189,19 @@ def recursion(g1, g2, map_1_to_2, layer, marcs, mcs_result, predicate, start_tim
     found = False
     for jdx in range(n_b):
         if jdx not in mapped_2_set and predicate[layer][jdx]:
-            new_map = copy.deepcopy(map_1_to_2)
-            new_map[layer] = jdx
+            map_1_to_2[layer] = jdx
             new_marcs = refine_marcs(g1, g2, layer, jdx, marcs)
-            recursion(g1, g2, new_map, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
+            recursion(g1, g2, map_1_to_2, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
+            map_1_to_2.pop(layer)
             found = True
 
     # handle the case where we have no valid matches (due to the predicate conditions)
     # (ytz): do we always want to consider this to be a valid possibility?
     if not found:
-        new_map = copy.deepcopy(map_1_to_2)
-        new_map[layer] = None
+        map_1_to_2[layer] = None
         new_marcs = refine_marcs(g1, g2, layer, None, marcs)  # we can make this probably affect only a subslice!
-        recursion(g1, g2, new_map, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
+        recursion(g1, g2, map_1_to_2, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
+        map_1_to_2.pop(layer)
 
 
 def test_compute_marcs():
