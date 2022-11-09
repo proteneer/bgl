@@ -8,13 +8,14 @@ def arcs_left(marcs):
     # courtesy of jfass
     return np.sum(np.any(marcs, 1))
 
+# this is mainly used for self-consistent
 def compute_marcs_given_maps(g1, g2, map_1_to_2):
     num_a_edges = g1.n_edges
     num_b_edges = g2.n_edges
     marcs = np.ones((num_a_edges, num_b_edges), dtype=np.int32)
     for v1, v2 in map_1_to_2.items():
         for e1 in g1.get_edges(v1):
-            if v2:
+            if v2 is not None:
                 e2 = g2.get_edges(v2)
                 # set any non-adjacent edges to zero
                 for ej in range(num_b_edges):
@@ -28,11 +29,13 @@ def compute_marcs_given_maps(g1, g2, map_1_to_2):
     return marcs
 
 
+# this is the bottleneck
 def refine_marcs(g1, g2, new_v1, new_v2, marcs):
     new_marcs = marcs.copy()
     num_b_edges = g2.n_edges
     for e1 in g1.get_edges(new_v1):
-        if new_v2:
+        # don't if new_v2 here since new_v2 may be zero!
+        if new_v2 is not None:
             e2 = g2.get_edges(new_v2)
             # set any non-adjacent edges to zero
             for ej in range(num_b_edges):
@@ -99,7 +102,7 @@ def mcs(predicate, bonds_a, bonds_b, timeout):
     marcs = compute_marcs_given_maps(g_a, g_b, map_a_to_b)
 
     start_time = time.time()
-    timeout = 30
+    timeout = 60 # tbd make dynamic
 
     recursion(g_a, g_b, map_a_to_b, 0, marcs, mcs_result, predicate, start_time, timeout)
 
@@ -135,7 +138,7 @@ def recursion(g1, g2, map_1_to_2, layer, marcs, mcs_result, predicate, start_tim
             mcs_result.all_maps = [map_1_to_2]
             mcs_result.num_edges = num_edges
         elif mcs_result.num_edges == num_edges:
-            # print("Found an equal or better complete map", num_edges, "mapping", sorted(map_1_to_2.items()))
+            # print("Found an equal or better complete map with", num_edges, "edges")
             mcs_result.all_maps.append(map_1_to_2)
         return
 
@@ -154,7 +157,8 @@ def recursion(g1, g2, map_1_to_2, layer, marcs, mcs_result, predicate, start_tim
             recursion(g1, g2, new_map, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
             found = True
 
-    # handle the case where we have no valid matches
+    # handle the case where we have no valid matches (due to the predicate conditions)
+    # (ytz): do we always want to consider this to be a valid possibility?   
     if not found:
         new_map = copy.deepcopy(map_1_to_2)
         new_map[layer] = None
