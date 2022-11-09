@@ -204,13 +204,10 @@ def recursion(g1, g2, atom_map, layer, marcs, mcs_result, predicate, start_time,
     if num_edges < mcs_result.num_edges:
         return
 
-    # mapped_2_set = set(atom_map.values())
-
     # check possible subtrees
     found = False
     for jdx, mapped_idx in enumerate(atom_map.map_2_to_1):
-        # if jdx not in mapped_2_set and predicate[layer][jdx]:
-        if mapped_idx == -1 and predicate[layer][jdx]:
+        if mapped_idx == UNMAPPED and predicate[layer][jdx]:
             atom_map.add(layer, jdx)
             new_marcs = refine_marcs(g1, g2, layer, jdx, marcs)
             recursion(g1, g2, atom_map, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
@@ -275,3 +272,35 @@ if __name__ == "__main__":
 
     # recursion({}, 3, 3, 0)
     test_compute_marcs()
+
+
+# this is the bottleneck
+# optimize further
+# def refine_marcs_incremental(g1, g2, new_v1, new_v2, marcs):
+#     """
+#     return vertices that have changed
+#     """
+#     # new_marcs = marcs.copy()
+#     num_b_edges = g2.n_edges
+#     old_rows = []
+
+#     for e1 in g1.get_edges(new_v1):
+#         old_rows.append((e1, marcs[e1].copy()))
+#         # don't if new_v2 here since new_v2 may be zero!
+#         if new_v2 is not None:
+#             e2 = g2.get_edges(new_v2)
+#             # set any non-adjacent edges to zero
+#             for ej in range(num_b_edges):
+#                 if ej not in e2:
+#                     marcs[e1][ej] = 0
+#         else:
+#             # v1 is explicitly mapped to None, so we zero out all edges
+#             for ej in range(num_b_edges):
+#                 marcs[e1][ej] = 0
+
+#     return old_rows
+
+
+# def restore_marcs(marcs, old_rows):
+#     for e1, row in old_rows:
+#         marcs[e1] = row
