@@ -162,7 +162,7 @@ def recursion(g1, g2, map_1_to_2, layer, marcs, mcs_result, predicate, start_tim
     if not found:
         new_map = copy.deepcopy(map_1_to_2)
         new_map[layer] = None
-        new_marcs = refine_marcs(g1, g2, layer, None, marcs)
+        new_marcs = refine_marcs(g1, g2, layer, None, marcs) # we can make this probably affect only a subslice!
         recursion(g1, g2, new_map, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
 
 
