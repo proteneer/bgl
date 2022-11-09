@@ -9,25 +9,28 @@ def arcs_left(marcs):
     return np.sum(np.any(marcs, 1))
 
 
-# this is mainly used for self-consistency
-def compute_marcs_given_maps(g1, g2, map_1_to_2):
-    num_a_edges = g1.n_edges
-    num_b_edges = g2.n_edges
-    marcs = np.ones((num_a_edges, num_b_edges), dtype=np.int32)
-    for v1, v2 in map_1_to_2.items():
-        for e1 in g1.get_edges(v1):
-            if v2 is not None:
-                e2 = g2.get_edges(v2)
-                # set any non-adjacent edges to zero
-                for ej in range(num_b_edges):
-                    if ej not in e2:
-                        marcs[e1][ej] = 0
-            else:
-                # v1 is explicitly mapped to None, so we zero out all edges
-                for ej in range(num_b_edges):
-                    marcs[e1][ej] = 0
+UNMAPPED = -1
 
-    return marcs
+# this is mainly used for self-consistency
+# def compute_marcs_given_maps(g1, g2, map_1_to_2):
+#     num_a_edges = g1.n_edges
+#     num_b_edges = g2.n_edges
+#     marcs = np.ones((num_a_edges, num_b_edges), dtype=np.int32)
+#     for v1, v2 in enumerate(map_1_to_2):
+#         if v2 != ATOM_MAP_UNTESTED:
+#             for e1 in g1.get_edges(v1):
+#                 if v2 != ATOM_MAP_NONE_IDX:
+#                     e2 = g2.get_edges(v2)
+#                     # set any non-adjacent edges to zero
+#                     for ej in range(num_b_edges):
+#                         if ej not in e2:
+#                             marcs[e1][ej] = 0
+#                 else:
+#                     # v1 is explicitly mapped to None, so we zero out all edges
+#                     for ej in range(num_b_edges):
+#                         marcs[e1][ej] = 0
+
+#     return marcs
 
 
 # this is the bottleneck
@@ -82,6 +85,7 @@ class MCSResult:
     def __init__(self, maps_1_to_2):
         self.all_maps = [maps_1_to_2]
         self.num_edges = 0
+        self.leafs_visited = 0
 
 
 class Graph:
@@ -135,21 +139,25 @@ def mcs(predicate, bonds_a, bonds_b, timeout):
     g_a = Graph(n_a, bonds_a)
     g_b = Graph(n_b, bonds_b)
 
-    map_a_to_b = {}
+    # map_a_to_b = {}
+    map_a_to_b = AtomMap(n_a, n_b)
     mcs_result = MCSResult(map_a_to_b)
-    marcs = compute_marcs_given_maps(g_a, g_b, map_a_to_b)
+    marcs = np.ones((g_a.n_edges, g_b.n_edges), dtype=np.int32)
 
     start_time = time.time()
     timeout = 60  # tbd make dynamic
 
     recursion(g_a, g_b, map_a_to_b, 0, marcs, mcs_result, predicate, start_time, timeout)
 
+    print("leafs visited", mcs_result.leafs_visited)
+
     all_cores = []
 
     for atom_map in mcs_result.all_maps:
         core = []
-        for a, b in atom_map.items():
-            if b is not None:
+        # print(atom_map.map_1_to_2)
+        for a, b in enumerate(atom_map.map_1_to_2):
+            if b != UNMAPPED:
                 core.append((a, b))
         core = np.array(sorted(core))
         all_cores.append(core)
@@ -157,7 +165,21 @@ def mcs(predicate, bonds_a, bonds_b, timeout):
     return all_cores
 
 
-def recursion(g1, g2, map_1_to_2, layer, marcs, mcs_result, predicate, start_time, timeout):
+class AtomMap:
+    def __init__(self, n_a, n_b):
+        self.map_1_to_2 = np.zeros(n_a, dtype=np.int32) + UNMAPPED
+        self.map_2_to_1 = np.zeros(n_b, dtype=np.int32) + UNMAPPED
+
+    def add(self, idx, jdx):
+        self.map_1_to_2[idx] = jdx
+        self.map_2_to_1[jdx] = idx
+
+    def pop(self, idx, jdx):
+        self.map_1_to_2[idx] = UNMAPPED
+        self.map_2_to_1[jdx] = UNMAPPED
+
+
+def recursion(g1, g2, atom_map, layer, marcs, mcs_result, predicate, start_time, timeout):
 
     if time.time() - start_time > timeout:
         print("timed out")
@@ -172,36 +194,38 @@ def recursion(g1, g2, map_1_to_2, layer, marcs, mcs_result, predicate, start_tim
 
     # every atom has been mapped
     if layer == n_a:
+        mcs_result.leafs_visited += 1
         if mcs_result.num_edges < num_edges:
-            mcs_result.all_maps = [copy.deepcopy(map_1_to_2)]
+            mcs_result.all_maps = [copy.deepcopy(atom_map)]
             mcs_result.num_edges = num_edges
         elif mcs_result.num_edges == num_edges:
             # print("Found an equal or better complete map with", num_edges, "edges")
-            mcs_result.all_maps.append(copy.deepcopy(map_1_to_2))
+            mcs_result.all_maps.append(copy.deepcopy(atom_map))
         return
 
     if num_edges < mcs_result.num_edges:
         return
 
-    mapped_2_set = set(map_1_to_2.values())
+    # mapped_2_set = set(atom_map.values())
 
     # check possible subtrees
     found = False
     for jdx in range(n_b):
-        if jdx not in mapped_2_set and predicate[layer][jdx]:
-            map_1_to_2[layer] = jdx
+        # if jdx not in mapped_2_set and predicate[layer][jdx]:
+        if atom_map.map_2_to_1[jdx] == UNMAPPED and predicate[layer][jdx]:
+            atom_map.add(layer, jdx)
             new_marcs = refine_marcs(g1, g2, layer, jdx, marcs)
-            recursion(g1, g2, map_1_to_2, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
-            map_1_to_2.pop(layer)
+            recursion(g1, g2, atom_map, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
+            atom_map.pop(layer, jdx)
             found = True
 
     # handle the case where we have no valid matches (due to the predicate conditions)
     # (ytz): do we always want to consider this to be a valid possibility?
     if not found:
-        map_1_to_2[layer] = None
+        # atom_map[layer] = None # don't need, since default is a no-map
         new_marcs = refine_marcs(g1, g2, layer, None, marcs)  # we can make this probably affect only a subslice!
-        recursion(g1, g2, map_1_to_2, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
-        map_1_to_2.pop(layer)
+        recursion(g1, g2, atom_map, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
+        # atom_map.pop(layer) # don't need to pop, never added anything
 
 
 def test_compute_marcs():
