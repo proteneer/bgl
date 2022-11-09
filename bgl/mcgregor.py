@@ -149,8 +149,6 @@ def mcs(predicate, bonds_a, bonds_b, timeout):
 
     recursion(g_a, g_b, map_a_to_b, 0, marcs, mcs_result, predicate, start_time, timeout)
 
-    print("leafs visited", mcs_result.leafs_visited)
-
     all_cores = []
 
     for atom_map in mcs_result.all_maps:
@@ -167,8 +165,8 @@ def mcs(predicate, bonds_a, bonds_b, timeout):
 
 class AtomMap:
     def __init__(self, n_a, n_b):
-        self.map_1_to_2 = np.zeros(n_a, dtype=np.int32) + UNMAPPED
-        self.map_2_to_1 = np.zeros(n_b, dtype=np.int32) + UNMAPPED
+        self.map_1_to_2 = [UNMAPPED] * n_a
+        self.map_2_to_1 = [UNMAPPED] * n_b
 
     def add(self, idx, jdx):
         self.map_1_to_2[idx] = jdx
@@ -210,9 +208,9 @@ def recursion(g1, g2, atom_map, layer, marcs, mcs_result, predicate, start_time,
 
     # check possible subtrees
     found = False
-    for jdx in range(n_b):
+    for jdx, mapped_idx in enumerate(atom_map.map_2_to_1):
         # if jdx not in mapped_2_set and predicate[layer][jdx]:
-        if atom_map.map_2_to_1[jdx] == UNMAPPED and predicate[layer][jdx]:
+        if mapped_idx == -1 and predicate[layer][jdx]:
             atom_map.add(layer, jdx)
             new_marcs = refine_marcs(g1, g2, layer, jdx, marcs)
             recursion(g1, g2, atom_map, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
