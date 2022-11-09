@@ -8,7 +8,8 @@ def arcs_left(marcs):
     # courtesy of jfass
     return np.sum(np.any(marcs, 1))
 
-# this is mainly used for self-consistent
+
+# this is mainly used for self-consistency
 def compute_marcs_given_maps(g1, g2, map_1_to_2):
     num_a_edges = g1.n_edges
     num_b_edges = g2.n_edges
@@ -31,6 +32,9 @@ def compute_marcs_given_maps(g1, g2, map_1_to_2):
 
 # this is the bottleneck
 def refine_marcs(g1, g2, new_v1, new_v2, marcs):
+    """
+    return vertices that have changed
+    """
     new_marcs = marcs.copy()
     num_b_edges = g2.n_edges
     for e1 in g1.get_edges(new_v1):
@@ -41,6 +45,29 @@ def refine_marcs(g1, g2, new_v1, new_v2, marcs):
             for ej in range(num_b_edges):
                 if ej not in e2:
                     new_marcs[e1][ej] = 0
+        else:
+            # v1 is explicitly mapped to None, so we zero out all edges
+            for ej in range(num_b_edges):
+                new_marcs[e1][ej] = 0
+
+    return new_marcs
+
+
+def refine_marcs_inplace(g1, g2, new_v1, new_v2, marcs):
+    """
+    return edges that have changed
+    """
+    new_marcs = marcs.copy()
+    num_b_edges = g2.n_edges
+    for e1 in g1.get_edges(new_v1):
+        # don't if new_v2 here since new_v2 may be zero!
+        if new_v2 is not None:
+            e2 = g2.get_edges(new_v2)
+            # set any non-adjacent edges to zero
+            for ej in range(num_b_edges):
+                if ej not in e2:
+                    new_marcs[e1][ej] = 0
+
         else:
             # v1 is explicitly mapped to None, so we zero out all edges
             for ej in range(num_b_edges):
@@ -102,7 +129,7 @@ def mcs(predicate, bonds_a, bonds_b, timeout):
     marcs = compute_marcs_given_maps(g_a, g_b, map_a_to_b)
 
     start_time = time.time()
-    timeout = 60 # tbd make dynamic
+    timeout = 60  # tbd make dynamic
 
     recursion(g_a, g_b, map_a_to_b, 0, marcs, mcs_result, predicate, start_time, timeout)
 
@@ -112,7 +139,7 @@ def mcs(predicate, bonds_a, bonds_b, timeout):
         core = []
         for a, b in atom_map.items():
             if b is not None:
-                core.append((a,b))
+                core.append((a, b))
         core = np.array(sorted(core))
         all_cores.append(core)
 
@@ -158,11 +185,11 @@ def recursion(g1, g2, map_1_to_2, layer, marcs, mcs_result, predicate, start_tim
             found = True
 
     # handle the case where we have no valid matches (due to the predicate conditions)
-    # (ytz): do we always want to consider this to be a valid possibility?   
+    # (ytz): do we always want to consider this to be a valid possibility?
     if not found:
         new_map = copy.deepcopy(map_1_to_2)
         new_map[layer] = None
-        new_marcs = refine_marcs(g1, g2, layer, None, marcs) # we can make this probably affect only a subslice!
+        new_marcs = refine_marcs(g1, g2, layer, None, marcs)  # we can make this probably affect only a subslice!
         recursion(g1, g2, new_map, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
 
 
@@ -201,7 +228,6 @@ def test_compute_marcs():
     predicates = np.ones((g1.n_vertices, g2.n_vertices))
 
     recursion(g1, g2, map_1_to_2, 0, marcs, mcs_result, predicates)
-
 
     print("Pre initialized")
 

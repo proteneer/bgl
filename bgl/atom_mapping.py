@@ -57,21 +57,21 @@ def get_romol_bonds(mol):
 
     return np.array(bonds, dtype=np.int32)
 
-def get_core(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout=10):
+def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout=10):
 
     if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
-        all_cores = _get_core_impl(mol_b, mol_a, ring_cutoff, chain_cutoff, timeout)
+        all_cores = _get_cores_impl(mol_b, mol_a, ring_cutoff, chain_cutoff, timeout)
         new_cores = []
         for core in all_cores:
             core = np.array([(x[1], x[0]) for x in core], dtype=core.dtype)
             new_cores.append(core)
         return new_cores
     else:
-        all_cores = _get_core_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout)
+        all_cores = _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout)
         return all_cores
         
 
-def _get_core_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout):
+def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout):
     """
     Find a reasonable core between two molecules. This function takes in two cutoff parameters:
 
