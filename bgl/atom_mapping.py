@@ -78,6 +78,11 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout):
 
     If either atom i or atom j then the dist(i,j) < ring_cutoff, otherwise dist(i,j) < chain_cutoff
 
+    Additional notes
+    ----------------
+    1) The returned cores are sorted in increasing order based on the rmsd of the alignment.
+    2) The number of cores atoms may vary slightly, but the number of mapped edges are the same.
+
     TBD: disallow SP3->SP2 hybridization changes.
     TBD: check for chiral restraints/parity
 
@@ -98,6 +103,7 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout):
     Returns
     -------
     np.array of shape (C,2)
+
 
     """
 
@@ -123,17 +129,19 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout):
     all_cores = mcgregor.mcs(predicate, bonds_a, bonds_b, timeout)
 
     dists = []
-    # sort by distance of the mapping
+    # rmsd, note that len(core) is not the same, only the number of edges is
     for core in all_cores:
         r_i = conf_a[core[:, 0]]
         r_j = conf_b[core[:, 1]]
-        dists.append(np.linalg.norm(r_i - r_j))
+        r2_ij = np.sum(np.power(r_i - r_j, 2))
+        rmsd = np.sqrt(r2_ij / len(core))
+        dists.append(rmsd)
 
     sorted_cores = []
     for p in np.argsort(dists):
         sorted_cores.append(all_cores[p])
 
-    return all_cores
+    return sorted_cores
 
 
 def recenter_mol(mol):
