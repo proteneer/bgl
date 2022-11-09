@@ -4,11 +4,12 @@ import copy
 
 # when computed on a leaf node this is equal to the number of edges mapped.
 def arcs_left(marcs):
-    arcsleft = 0
-    for row in marcs:
-        if np.sum(row) > 0:
-            arcsleft += 1
-    return arcsleft
+    return np.sum(np.any(marcs, 1))
+    # arcsleft = 0
+    # for row in marcs:
+        # if np.sum(row) > 0:
+            # arcsleft += 1
+    # return arcsleft
 
 
 def compute_marcs_given_maps(g1, g2, map_1_to_2):
@@ -158,6 +159,8 @@ def mcs(predicate, bonds_a, bonds_b, timeout):
     n_a = predicate.shape[0]
     n_b = predicate.shape[1]
 
+    assert n_a <= n_b
+
     g_a = Graph(n_a, bonds_a)
     g_b = Graph(n_b, bonds_b)
 
@@ -165,39 +168,56 @@ def mcs(predicate, bonds_a, bonds_b, timeout):
     num_edges = 0
     mcs_result = MCSResult(map_a_to_b, num_edges)
     marcs = compute_marcs_given_maps(g_a, g_b, map_a_to_b)
-    
-    recursion(g_a, g_b, map_a_to_b, 0, marcs, mcs_result)
+
+    start_time = time.time()
+    timeout = 30
+
+    recursion(g_a, g_b, map_a_to_b, 0, marcs, mcs_result, predicate, start_time, timeout)
 
     return np.array(sorted(mcs_result.map_1_to_2.items()))
 
-def recursion(g1, g2, map_1_to_2, layer, marcs, mcs_result, predicate):
+import time
+
+def recursion(g1, g2, map_1_to_2, layer, marcs, mcs_result, predicate, start_time, timeout):
+
+    print(map_1_to_2)
+
+    if time.time() - start_time > timeout:
+        return
 
     n_a = g1.n_vertices
     n_b = g2.n_vertices
     num_edges = arcs_left(marcs)
 
-    if layer == n_a:
-        # leaf node
-        if mcs_result.num_edges <= num_edges:
-            print("Found an equal or better complete map", num_edges, "mapping", sorted(map_1_to_2.items()))
-            mcs_result.map_1_to_2 = map_1_to_2
-            mcs_result.num_edges = num_edges
-        return
+    # leaf node may not satisfy this condition if we have
+    # if layer == n_a:
+    #     # leaf node
+    #     if mcs_result.num_edges <= num_edges:
+    #         print("Found an equal or better complete map", num_edges, "mapping", sorted(map_1_to_2.items()))
+    #         mcs_result.map_1_to_2 = map_1_to_2
+    #         mcs_result.num_edges = num_edges
+    #     return
 
-    if num_edges <= mcs_result.num_edges:
-        # print("Skipping subtree")
+    if num_edges < mcs_result.num_edges:
         return
 
     mapped_2_set = set(map_1_to_2.values())
 
+    is_leaf = True
     for jdx in range(n_b):
-
         if jdx not in mapped_2_set and predicate[layer][jdx]:
             new_map = copy.deepcopy(map_1_to_2)
             new_map[layer] = jdx
             new_marcs = refine_marcs(g1, g2, layer, jdx, marcs)
-            recursion(g1, g2, new_map, layer + 1, new_marcs, mcs_result)
+            recursion(g1, g2, new_map, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
+            is_leaf = False
 
+    if is_leaf and mcs_result.num_edges <= num_edges:
+        print("Found an equal or better complete map", num_edges, "mapping", sorted(map_1_to_2.items()))
+        mcs_result.map_1_to_2 = map_1_to_2
+        mcs_result.num_edges = num_edges
+
+    return 
 
 def test_compute_marcs():
 
@@ -230,7 +250,11 @@ def test_compute_marcs():
     num_edges = 0
     mcs_result = MCSResult(map_1_to_2, num_edges)
     marcs = compute_marcs_given_maps(g1, g2, map_1_to_2)
-    recursion(g1, g2, map_1_to_2, 0, marcs, mcs_result)
+
+    predicates = np.ones((g1.n_vertices, g2.n_vertices))
+
+    recursion(g1, g2, map_1_to_2, 0, marcs, mcs_result, predicates)
+
 
     print("Pre initialized")
 

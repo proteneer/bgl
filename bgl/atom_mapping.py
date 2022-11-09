@@ -5,9 +5,7 @@ from rdkit.Chem import Draw
 from scipy.spatial.distance import cdist
 from scipy.stats import special_ortho_group
 
-
-import bgl_wrapper
-import mcgregor
+from bgl import mcgregor
 
 
 def score_2d(conf, norm=2):
@@ -109,7 +107,13 @@ def get_core(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout=10):
                 if dij < chain_cutoff:
                     predicate[idx][jdx] = 1
 
-    core = bgl_wrapper.mcs(predicate, bonds_a, bonds_b, timeout)
+
+    print("???")
+    for r in predicate:
+        print(r)
+    print("???")
+
+    core = mcgregor.mcs(predicate, bonds_a, bonds_b, timeout)
 
     return core
 
