@@ -5,8 +5,7 @@ from rdkit.Chem import Draw
 from scipy.spatial.distance import cdist
 from scipy.stats import special_ortho_group
 
-
-from build import bgl_wrapper
+from bgl import mcgregor
 
 
 def score_2d(conf, norm=2):
@@ -21,7 +20,7 @@ def score_2d(conf, norm=2):
     return score / len(conf)
 
 
-def generate_good_rotations(mol_a, mol_b, num_rotations=3, max_rotations=1000):
+def generate_good_rotations(mol_a, mol_b, num_rotations=3, max_rotations=100):
 
     assert num_rotations < max_rotations
 
@@ -59,15 +58,33 @@ def get_romol_bonds(mol):
     return np.array(bonds, dtype=np.int32)
 
 
-def get_core(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout=10):
+def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout=10):
+
+    if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
+        all_cores = _get_cores_impl(mol_b, mol_a, ring_cutoff, chain_cutoff, timeout)
+        new_cores = []
+        for core in all_cores:
+            core = np.array([(x[1], x[0]) for x in core], dtype=core.dtype)
+            new_cores.append(core)
+        return new_cores
+    else:
+        all_cores = _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout)
+        return all_cores
+
+
+def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout):
     """
     Find a reasonable core between two molecules. This function takes in two cutoff parameters:
 
     If either atom i or atom j then the dist(i,j) < ring_cutoff, otherwise dist(i,j) < chain_cutoff
 
+    Additional notes
+    ----------------
+    1) The returned cores are sorted in increasing order based on the rmsd of the alignment.
+    2) The number of cores atoms may vary slightly, but the number of mapped edges are the same.
+
     TBD: disallow SP3->SP2 hybridization changes.
-    TBD: allow multiple maps to be returned.
-    TBD: check for chiral restraints/parity in the C++ code directly.
+    TBD: check for chiral restraints/parity
 
     Parameters
     ----------
@@ -86,6 +103,7 @@ def get_core(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout=10):
     Returns
     -------
     np.array of shape (C,2)
+
 
     """
 
@@ -108,9 +126,22 @@ def get_core(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout=10):
                 if dij < chain_cutoff:
                     predicate[idx][jdx] = 1
 
-    core = bgl_wrapper.mcs(predicate, bonds_a, bonds_b, timeout)
+    all_cores = mcgregor.mcs(predicate, bonds_a, bonds_b, timeout)
 
-    return core
+    dists = []
+    # rmsd, note that len(core) is not the same, only the number of edges is
+    for core in all_cores:
+        r_i = conf_a[core[:, 0]]
+        r_j = conf_b[core[:, 1]]
+        r2_ij = np.sum(np.power(r_i - r_j, 2))
+        rmsd = np.sqrt(r2_ij / len(core))
+        dists.append(rmsd)
+
+    sorted_cores = []
+    for p in np.argsort(dists):
+        sorted_cores.append(all_cores[p])
+
+    return sorted_cores
 
 
 def recenter_mol(mol):

@@ -1,9 +1,8 @@
 cmake_minimum_required(VERSION 3.14)
 
-include(FetchContent)
+set(LIBRARY_NAME bgl_wrapper)
 
-project(bgl_wrapper)
-
+project(${LIBRARY_NAME})
 
 set(CMAKE_CXX_FLAGS "-Wall -Wextra -O3")
 set(CMAKE_OSX_ARCHITECTURES "x86_64")
@@ -15,6 +14,10 @@ if(NOT EXISTS ${BOOST_DIR})
   execute_process(COMMAND tar xvf boost.tar.gz)
 endif()
 
+get_filename_component(INSTALL_DIR ${CMAKE_SOURCE_DIR} DIRECTORY)
+
+MESSAGE(${INSTALL_DIR})
+
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/${BOOST_DIR})
 
 if(NOT EXISTS ${PYBIND_SRC_DIR})
@@ -23,4 +26,6 @@ endif()
 
 add_subdirectory(${CMAKE_CURRENT_BINARY_DIR}/${PYBIND_SRC_DIR})
 
-pybind11_add_module(bgl_wrapper bgl_wrapper.cpp)
+pybind11_add_module(${LIBRARY_NAME} bgl_wrapper.cpp)
+
+install(TARGETS ${LIBRARY_NAME} DESTINATION ${INSTALL_DIR})
