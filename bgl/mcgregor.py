@@ -1,30 +1,28 @@
 # maximum common subgraph routines based off of the mcgregor paper
 import numpy as np
 import copy
+import time
 
 # when computed on a leaf node this is equal to the number of edges mapped.
 def arcs_left(marcs):
+    # courtesy of jfass
     return np.sum(np.any(marcs, 1))
-    # arcsleft = 0
-    # for row in marcs:
-        # if np.sum(row) > 0:
-            # arcsleft += 1
-    # return arcsleft
-
 
 def compute_marcs_given_maps(g1, g2, map_1_to_2):
-
     num_a_edges = g1.n_edges
     num_b_edges = g2.n_edges
-
     marcs = np.ones((num_a_edges, num_b_edges), dtype=np.int32)
-
     for v1, v2 in map_1_to_2.items():
         for e1 in g1.get_edges(v1):
-            e2 = g2.get_edges(v2)
-            # set any non-adjacent edges to zero
-            for ej in range(num_b_edges):
-                if ej not in e2:
+            if v2:
+                e2 = g2.get_edges(v2)
+                # set any non-adjacent edges to zero
+                for ej in range(num_b_edges):
+                    if ej not in e2:
+                        marcs[e1][ej] = 0
+            else:
+                # v1 is explicitly mapped to None, so we zero out all edges
+                for ej in range(num_b_edges):
                     marcs[e1][ej] = 0
 
     return marcs
@@ -34,73 +32,24 @@ def refine_marcs(g1, g2, new_v1, new_v2, marcs):
     new_marcs = marcs.copy()
     num_b_edges = g2.n_edges
     for e1 in g1.get_edges(new_v1):
-        e2 = g2.get_edges(new_v2)
-        # set any non-adjacent edges to zero
-        for ej in range(num_b_edges):
-            if ej not in e2:
+        if new_v2:
+            e2 = g2.get_edges(new_v2)
+            # set any non-adjacent edges to zero
+            for ej in range(num_b_edges):
+                if ej not in e2:
+                    new_marcs[e1][ej] = 0
+        else:
+            # v1 is explicitly mapped to None, so we zero out all edges
+            for ej in range(num_b_edges):
                 new_marcs[e1][ej] = 0
 
     return new_marcs
 
 
 class MCSResult:
-    def __init__(self, map_1_to_2, num_edges):
-        self.map_1_to_2 = map_1_to_2
-        self.num_edges = num_edges
-
-
-def mcgregor(g1, g2, map_1_to_2, map_2_to_1, marcs, mcs_result):
-
-    # np.testing.assert_array_equal(marcs, compute_marcs_given_maps(g1, g2, map_1_to_2))
-
-    # marcs = compute_marcs_given_maps(g1, g2, map_1_to_2)
-    num_edges = arcs_left(marcs)
-
-    print("testing", sorted(map_1_to_2.items()))
-
-    # leaf node, only update best num_edges found at leaf node
-    if len(map_1_to_2) == g1.n_vertices:
-        if mcs_result.num_edges <= num_edges:
-            # print("Found an equal or better complete map", num_edges, "mapping", sorted(map_1_to_2.items()))
-            mcs_result.map_1_to_2 = map_1_to_2
-            mcs_result.map_2_to_1 = map_2_to_1
-            mcs_result.num_edges = num_edges
-
-            # assert 0
-        return
-
-    # we are not a leaf node
-    # if num_edges <= mcs_result.num_edges:
-    # print("Skipping subtree")
-    # return
-
-    for v1 in range(g1.n_vertices):
-
-        if v1 in map_1_to_2:
-            continue
-
-        for v2 in range(g2.n_vertices):
-
-            if v2 in map_2_to_1:
-                continue
-
-            # tbd avoid deepcopy and just pop v1,v2
-
-            map_1_to_2_copy = copy.deepcopy(map_1_to_2)
-            map_2_to_1_copy = copy.deepcopy(map_2_to_1)
-
-            map_1_to_2_copy[v1] = v2
-            map_2_to_1_copy[v2] = v1
-
-            marcs_copy = refine_marcs(g1, g2, v1, v2, marcs)
-            # ref_marcs_copy = compute_marcs_given_maps(g1, g2, map_1_to_2_copy)
-
-            mcgregor(g1, g2, map_1_to_2_copy, map_2_to_1_copy, marcs_copy, mcs_result)
-
-            print("backtracking to", sorted(map_1_to_2.items()))
-
-        print("finished all vertices inner", sorted(map_1_to_2.items()))
-    print("finished all vertices outer", sorted(map_1_to_2.items()))
+    def __init__(self, maps_1_to_2):
+        self.all_maps = [maps_1_to_2]
+        self.num_edges = 0
 
 
 class Graph:
@@ -135,25 +84,6 @@ class Graph:
         return self.lol_edges[vertex]
 
 
-def test_compute_marcs():
-
-    g1_edges = [[0, 1], [1, 2]]
-    g1_n_vertices = 3
-    g1 = Graph(g1_n_vertices, g1_edges)
-
-    g2_edges = [[0, 1], [1, 2], [0, 2]]
-    g2_n_vertices = 3
-    g2 = Graph(g2_n_vertices, g2_edges)
-
-    map_1_to_2 = {}
-    map_2_to_1 = {}
-    num_edges = 0
-    mcs_result = MCSResult(map_1_to_2, map_2_to_1, num_edges)
-    marcs = compute_marcs_given_maps(g1, g2, map_1_to_2)
-
-    mcgregor(g1, g2, map_1_to_2, map_2_to_1, marcs, mcs_result)
-
-
 def mcs(predicate, bonds_a, bonds_b, timeout):
 
     n_a = predicate.shape[0]
@@ -165,8 +95,7 @@ def mcs(predicate, bonds_a, bonds_b, timeout):
     g_b = Graph(n_b, bonds_b)
 
     map_a_to_b = {}
-    num_edges = 0
-    mcs_result = MCSResult(map_a_to_b, num_edges)
+    mcs_result = MCSResult(map_a_to_b)
     marcs = compute_marcs_given_maps(g_a, g_b, map_a_to_b)
 
     start_time = time.time()
@@ -174,15 +103,26 @@ def mcs(predicate, bonds_a, bonds_b, timeout):
 
     recursion(g_a, g_b, map_a_to_b, 0, marcs, mcs_result, predicate, start_time, timeout)
 
-    return np.array(sorted(mcs_result.map_1_to_2.items()))
+    all_cores = []
 
-import time
+    for atom_map in mcs_result.all_maps:
+        core = []
+        for a, b in atom_map.items():
+            if b is not None:
+                core.append((a,b))
+        core = np.array(sorted(core))
+        all_cores.append(core)
+
+    for ac in all_cores:
+        print(ac)
+
+    return all_cores
+
 
 def recursion(g1, g2, map_1_to_2, layer, marcs, mcs_result, predicate, start_time, timeout):
 
-    print(map_1_to_2)
-
     if time.time() - start_time > timeout:
+        print("timed out")
         return
 
     n_a = g1.n_vertices
@@ -192,35 +132,42 @@ def recursion(g1, g2, map_1_to_2, layer, marcs, mcs_result, predicate, start_tim
 
     num_edges = arcs_left(marcs)
 
-    # leaf node may not satisfy this condition
-    # if layer == n_a:
-    #     # leaf node
-    #     if mcs_result.num_edges <= num_edges:
-    #         print("Found an equal or better complete map", num_edges, "mapping", sorted(map_1_to_2.items()))
-    #         mcs_result.map_1_to_2 = map_1_to_2
-    #         mcs_result.num_edges = num_edges
-    #     return
+    # every atom has been mapped
+    if layer == n_a:
+        if mcs_result.num_edges < num_edges:
+            mcs_result.all_maps = [map_1_to_2]
+            mcs_result.num_edges = num_edges
+            print("FLUSHING")
+        elif mcs_result.num_edges == num_edges:
+            # print("Found an equal or better complete map", num_edges, "mapping", sorted(map_1_to_2.items()))
+            print("???FINAL 22->", map_1_to_2[22], "MAP SIZE", len(map_1_to_2), map_1_to_2)
+            mcs_result.all_maps.append(map_1_to_2)
+        return
 
     if num_edges < mcs_result.num_edges:
+        # if layer == 23:
+            # print("PRUNED 22 MAPPED TO", map_1_to_2[22])
         return
 
     mapped_2_set = set(map_1_to_2.values())
 
-    is_leaf = True
+    # check possible subtrees
+    found = False
     for jdx in range(n_b):
         if jdx not in mapped_2_set and predicate[layer][jdx]:
             new_map = copy.deepcopy(map_1_to_2)
             new_map[layer] = jdx
             new_marcs = refine_marcs(g1, g2, layer, jdx, marcs)
             recursion(g1, g2, new_map, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
-            is_leaf = False
+            found = True
 
-    if is_leaf and mcs_result.num_edges <= num_edges:
-        print("Found an equal or better complete map", num_edges, "mapping", sorted(map_1_to_2.items()))
-        mcs_result.map_1_to_2 = map_1_to_2
-        mcs_result.num_edges = num_edges
+    # handle the case where we have no valid matches
+    if not found:
+        new_map = copy.deepcopy(map_1_to_2)
+        new_map[layer] = None
+        new_marcs = refine_marcs(g1, g2, layer, None, marcs)
+        recursion(g1, g2, new_map, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
 
-    return 
 
 def test_compute_marcs():
 

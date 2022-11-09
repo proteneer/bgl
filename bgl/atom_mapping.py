@@ -57,8 +57,24 @@ def get_romol_bonds(mol):
 
     return np.array(bonds, dtype=np.int32)
 
-
 def get_core(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout=10):
+
+    if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
+        print("swapped")
+        all_cores = _get_core_impl(mol_b, mol_a, ring_cutoff, chain_cutoff, timeout)
+        new_cores = []
+        for core in all_cores:
+            core = np.array([(x[1], x[0]) for x in core], dtype=core.dtype)
+            new_cores.append(core)
+        return new_cores
+
+    else:
+        all_cores = _get_core_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout)
+    
+        return all_cores
+        
+
+def _get_core_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout):
     """
     Find a reasonable core between two molecules. This function takes in two cutoff parameters:
 
@@ -108,14 +124,18 @@ def get_core(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout=10):
                     predicate[idx][jdx] = 1
 
 
-    print("???")
-    for r in predicate:
-        print(r)
-    print("???")
+    # for r in predicate:
+        # print(r)
 
-    core = mcgregor.mcs(predicate, bonds_a, bonds_b, timeout)
+    print(mol_a.GetAtomWithIdx(22).GetSymbol(), np.argwhere(predicate[22] == 1))
+    print(mol_b.GetAtomWithIdx(0).GetSymbol())
+    print(mol_b.GetAtomWithIdx(27).GetSymbol())
 
-    return core
+    # assert 0
+
+    cores = mcgregor.mcs(predicate, bonds_a, bonds_b, timeout)
+
+    return cores
 
 
 def recenter_mol(mol):
