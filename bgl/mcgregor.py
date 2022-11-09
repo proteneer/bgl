@@ -39,17 +39,10 @@ def refine_marcs(g1, g2, new_v1, new_v2, marcs):
     return vertices that have changed
     """
     new_marcs = marcs.copy()
-    num_b_edges = g2.n_edges
     for e1 in g1.get_edges(new_v1):
         # don't if new_v2 here since new_v2 may be zero!
-        if new_v2 is not None:
-            # print(new_marcs[e1].dtype, g2.get_edges_as_vector(new_v2).dtype)
+        if new_v2 != UNMAPPED:
             new_marcs[e1] &= g2.get_edges_as_vector(new_v2)
-            # e2 = g2.get_edges(new_v2)  # note edges are not sorted
-            # # set any non-adjacent edges to zero
-            # for ej in range(num_b_edges):
-            #     if ej not in e2:
-            #         new_marcs[e1][ej] = 0
         else:
             # v1 is explicitly mapped to None, so we zero out all edges
             new_marcs[e1, :] = 0
@@ -196,7 +189,7 @@ def recursion(g1, g2, atom_map, layer, marcs, mcs_result, predicate, start_time,
     # (ytz): do we always want to consider this to be a valid possibility?
     if not found:
         # atom_map[layer] = None # don't need, since default is a no-map
-        new_marcs = refine_marcs(g1, g2, layer, None, marcs)  # we can make this probably affect only a subslice!
+        new_marcs = refine_marcs(g1, g2, layer, UNMAPPED, marcs)  # we can make this probably affect only a subslice!
         recursion(g1, g2, atom_map, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
         # atom_map.pop(layer) # don't need to pop, never added anything
 
