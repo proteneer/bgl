@@ -147,13 +147,14 @@ def mcs(predicate, bonds_a, bonds_b, timeout):
     start_time = time.time()
     timeout = 60  # tbd make dynamic
 
+    predicate = tuple(tuple(x) for x in predicate)
+
     recursion(g_a, g_b, map_a_to_b, 0, marcs, mcs_result, predicate, start_time, timeout)
 
     all_cores = []
 
     for atom_map in mcs_result.all_maps:
         core = []
-        # print(atom_map.map_1_to_2)
         for a, b in enumerate(atom_map.map_1_to_2):
             if b != UNMAPPED:
                 core.append((a, b))
@@ -206,8 +207,9 @@ def recursion(g1, g2, atom_map, layer, marcs, mcs_result, predicate, start_time,
 
     # check possible subtrees
     found = False
+    p_layer = predicate[layer] # cache here for faster access to avoid indirection of the form predicate[jdx][layer]
     for jdx, mapped_idx in enumerate(atom_map.map_2_to_1):
-        if mapped_idx == UNMAPPED and predicate[layer][jdx]:
+        if mapped_idx == UNMAPPED and p_layer[jdx]:
             atom_map.add(layer, jdx)
             new_marcs = refine_marcs(g1, g2, layer, jdx, marcs)
             recursion(g1, g2, atom_map, layer + 1, new_marcs, mcs_result, predicate, start_time, timeout)
