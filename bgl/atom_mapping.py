@@ -7,6 +7,7 @@ from scipy.stats import special_ortho_group
 
 
 import bgl_wrapper
+import mcgregor
 
 
 def score_2d(conf, norm=2):

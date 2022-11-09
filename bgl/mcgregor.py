@@ -153,7 +153,24 @@ def test_compute_marcs():
     mcgregor(g1, g2, map_1_to_2, map_2_to_1, marcs, mcs_result)
 
 
-def recursion(g1, g2, map_1_to_2, layer, marcs, mcs_result):
+def mcs(predicate, bonds_a, bonds_b, timeout):
+
+    n_a = predicate.shape[0]
+    n_b = predicate.shape[1]
+
+    g_a = Graph(n_a, bonds_a)
+    g_b = Graph(n_b, bonds_b)
+
+    map_a_to_b = {}
+    num_edges = 0
+    mcs_result = MCSResult(map_a_to_b, num_edges)
+    marcs = compute_marcs_given_maps(g_a, g_b, map_a_to_b)
+    
+    recursion(g_a, g_b, map_a_to_b, 0, marcs, mcs_result)
+
+    return np.array(sorted(mcs_result.map_1_to_2.items()))
+
+def recursion(g1, g2, map_1_to_2, layer, marcs, mcs_result, predicate):
 
     n_a = g1.n_vertices
     n_b = g2.n_vertices
@@ -174,7 +191,8 @@ def recursion(g1, g2, map_1_to_2, layer, marcs, mcs_result):
     mapped_2_set = set(map_1_to_2.values())
 
     for jdx in range(n_b):
-        if jdx not in mapped_2_set:
+
+        if jdx not in mapped_2_set and predicate[layer][jdx]:
             new_map = copy.deepcopy(map_1_to_2)
             new_map[layer] = jdx
             new_marcs = refine_marcs(g1, g2, layer, jdx, marcs)
@@ -220,7 +238,7 @@ def test_compute_marcs():
     num_edges = 0
     mcs_result = MCSResult(map_1_to_2, num_edges)
     marcs = compute_marcs_given_maps(g1, g2, map_1_to_2)
-    recursion(g1, g2, map_1_to_2, 0 + 1, marcs, mcs_result)  # note layer + 1
+    recursion(g1, g2, map_1_to_2, 0 + 1, marcs, mcs_result, predicates)  # note layer + 1
 
 
 if __name__ == "__main__":

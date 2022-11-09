@@ -1,8 +1,7 @@
 from rdkit import Chem
 import atom_mapping
 
-
-mols = Chem.SDMolSupplier("ligands.sdf", removeHs=False)
+mols = Chem.SDMolSupplier("datasets/hif2a.sdf", removeHs=False)
 mols = [m for m in mols]
 
 for idx, mol_a in enumerate(mols):
