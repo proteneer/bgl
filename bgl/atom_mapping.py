@@ -57,6 +57,7 @@ def get_romol_bonds(mol):
 
     return np.array(bonds, dtype=np.int32)
 
+
 def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout=10):
 
     if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
@@ -69,7 +70,7 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout=10):
     else:
         all_cores = _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout)
         return all_cores
-        
+
 
 def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout):
     """
@@ -78,8 +79,7 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout):
     If either atom i or atom j then the dist(i,j) < ring_cutoff, otherwise dist(i,j) < chain_cutoff
 
     TBD: disallow SP3->SP2 hybridization changes.
-    TBD: allow multiple maps to be returned.
-    TBD: check for chiral restraints/parity in the C++ code directly.
+    TBD: check for chiral restraints/parity
 
     Parameters
     ----------
@@ -120,9 +120,20 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout):
                 if dij < chain_cutoff:
                     predicate[idx][jdx] = 1
 
-    cores = mcgregor.mcs(predicate, bonds_a, bonds_b, timeout)
+    all_cores = mcgregor.mcs(predicate, bonds_a, bonds_b, timeout)
 
-    return cores
+    dists = []
+    # sort by distance of the mapping
+    for core in all_cores:
+        r_i = conf_a[core[:, 0]]
+        r_j = conf_b[core[:, 1]]
+        dists.append(np.linalg.norm(r_i - r_j))
+
+    sorted_cores = []
+    for p in np.argsort(dists):
+        sorted_cores.append(all_cores[p])
+
+    return all_cores
 
 
 def recenter_mol(mol):
