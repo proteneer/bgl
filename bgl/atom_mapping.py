@@ -6,7 +6,7 @@ from scipy.spatial.distance import cdist
 from scipy.stats import special_ortho_group
 
 
-from build import bgl_wrapper
+import bgl_wrapper
 
 
 def score_2d(conf, norm=2):
