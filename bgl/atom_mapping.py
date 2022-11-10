@@ -154,9 +154,9 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_conne
 
     import time
 
-    # start_time = time.time()
+    start_time = time.time()
     all_cores = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout)
-    # print("elapsed_time", time.time() - start_time)
+    print("elapsed_time", time.time() - start_time)
     if keep_connected_component:
         all_cores = remove_disconnected_components(mol_a, mol_b, all_cores)
 
