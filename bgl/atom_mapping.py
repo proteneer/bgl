@@ -63,16 +63,14 @@ def get_romol_bonds(mol):
 def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_connected_component=True):
 
     if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
-        all_cores = _get_cores_impl(mol_b, mol_a, ring_cutoff, chain_cutoff, timeout,
-            keep_connected_component)
+        all_cores = _get_cores_impl(mol_b, mol_a, ring_cutoff, chain_cutoff, timeout, keep_connected_component)
         new_cores = []
         for core in all_cores:
             core = np.array([(x[1], x[0]) for x in core], dtype=core.dtype)
             new_cores.append(core)
         return new_cores
     else:
-        all_cores = _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout,
-            keep_connected_component)
+        all_cores = _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_connected_component)
         return all_cores
 
 
@@ -126,21 +124,39 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_conne
     conf_a = get_romol_conf(mol_a)
     conf_b = get_romol_conf(mol_b)
 
-    predicate = np.zeros((mol_a.GetNumAtoms(), mol_b.GetNumAtoms()), dtype=np.int32)
+    priority_idxs = []  # ordered list of atoms to consider
 
     for idx, a_xyz in enumerate(conf_a):
         atom_i = mol_a.GetAtomWithIdx(idx)
+        dijs = []
+
+        allowed_idxs = set()
         for jdx, b_xyz in enumerate(conf_b):
             atom_j = mol_b.GetAtomWithIdx(jdx)
             dij = np.linalg.norm(a_xyz - b_xyz)
+            dijs.append(dij)
             if atom_i.IsInRing() or atom_j.IsInRing():
                 if dij < ring_cutoff:
-                    predicate[idx][jdx] = 1
+                    allowed_idxs.add(jdx)
             else:
                 if dij < chain_cutoff:
-                    predicate[idx][jdx] = 1
+                    allowed_idxs.add(jdx)
 
-    all_cores = mcgregor.mcs(predicate, bonds_a, bonds_b, timeout)
+        final_idxs = []
+        for idx in np.argsort(dijs):
+            if idx in allowed_idxs:
+                final_idxs.append(idx)
+
+        priority_idxs.append(final_idxs)
+
+    n_a = len(conf_a)
+    n_b = len(conf_b)
+
+    import time
+
+    # start_time = time.time()
+    all_cores = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout)
+    # print("elapsed_time", time.time() - start_time)
     if keep_connected_component:
         all_cores = remove_disconnected_components(mol_a, mol_b, all_cores)
 
@@ -158,6 +174,7 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_conne
         sorted_cores.append(all_cores[p])
 
     return sorted_cores
+
 
 def remove_disconnected_components(mol_a, mol_b, cores):
     """
