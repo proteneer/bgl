@@ -11,6 +11,30 @@ def arcs_left(marcs):
 
 UNMAPPED = -1
 
+
+def initialize_marcs_given_predicate(g1, g2, predicate):
+    num_a_edges = g1.n_edges
+    num_b_edges = g2.n_edges
+    marcs = np.ones((num_a_edges, num_b_edges), dtype=np.int32)
+    for e_a in range(num_a_edges):
+        src_a, dst_a = g1.edges[e_a]
+        for e_b in range(num_b_edges):
+            src_b, dst_b = g2.edges[e_b]
+            # an edge is allowed in two cases:
+            # 1) src_a can map to src_b, and dst_a can map dst_b
+            # 2) src_a can map to dst_b, and dst_a can map src_b
+            # if either 1 or 2 is satisfied, we skip, otherwise
+            # we can confidently reject the mapping
+            if predicate[src_a][src_b] and predicate[dst_a][dst_b]:
+                continue
+            elif predicate[src_a][dst_b] and predicate[dst_a][src_b]:
+                continue
+            else:
+                marcs[e_a][e_b] = 0
+
+    return marcs
+
+
 # this is mainly used for self-consistency
 # def compute_marcs_given_maps(g1, g2, map_1_to_2):
 #     num_a_edges = g1.n_edges
@@ -111,10 +135,10 @@ def mcs(predicate, bonds_a, bonds_b, timeout):
     # map_a_to_b = {}
     map_a_to_b = AtomMap(n_a, n_b)
     mcs_result = MCSResult(map_a_to_b)
-    marcs = np.ones((g_a.n_edges, g_b.n_edges), dtype=np.int32)
+
+    marcs = initialize_marcs_given_predicate(g_a, g_b, predicate)
 
     start_time = time.time()
-    timeout = 60  # tbd make dynamic
 
     predicate = tuple(tuple(x) for x in predicate)
 
@@ -176,7 +200,7 @@ def recursion(g1, g2, atom_map, layer, marcs, mcs_result, predicate, start_time,
 
     # check possible subtrees
     found = False
-    p_layer = predicate[layer] # cache here for faster access to avoid indirection of the form predicate[jdx][layer]
+    p_layer = predicate[layer]  # cache here for faster access to avoid indirection of the form predicate[jdx][layer]
     for jdx, mapped_idx in enumerate(atom_map.map_2_to_1):
         if mapped_idx == UNMAPPED and p_layer[jdx]:
             atom_map.add(layer, jdx)
