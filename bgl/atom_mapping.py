@@ -1,6 +1,8 @@
 import numpy as np
 from rdkit import Chem
 from rdkit.Chem import Draw
+import networkx as nx
+from collections import defaultdict
 
 from scipy.spatial.distance import cdist
 from scipy.stats import special_ortho_group
@@ -58,21 +60,23 @@ def get_romol_bonds(mol):
     return np.array(bonds, dtype=np.int32)
 
 
-def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout):
+def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_connected_component=True):
 
     if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
-        all_cores = _get_cores_impl(mol_b, mol_a, ring_cutoff, chain_cutoff, timeout)
+        all_cores = _get_cores_impl(mol_b, mol_a, ring_cutoff, chain_cutoff, timeout,
+            keep_connected_component)
         new_cores = []
         for core in all_cores:
             core = np.array([(x[1], x[0]) for x in core], dtype=core.dtype)
             new_cores.append(core)
         return new_cores
     else:
-        all_cores = _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout)
+        all_cores = _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout,
+            keep_connected_component)
         return all_cores
 
 
-def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout):
+def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_connected_component):
     """
     Find a reasonable core between two molecules. This function takes in two cutoff parameters:
 
@@ -99,6 +103,16 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout):
 
     chain_cutoff: float
         The distance cutoff that non-ring atoms must satisfy.
+
+    timeout: int
+        Maximum number of seconds before returning.
+
+    keep_connected_component: bool
+        Set to True to only keep the largest connected
+        subgraph in the mapping. The definition of connected
+        here is different from McGregor. Here it means there
+        is a way to reach the mapped atom without traversing
+        over a non-mapped atom.
 
     Returns
     -------
@@ -127,6 +141,8 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout):
                     predicate[idx][jdx] = 1
 
     all_cores = mcgregor.mcs(predicate, bonds_a, bonds_b, timeout)
+    if keep_connected_component:
+        all_cores = remove_disconnected_components(mol_a, mol_b, all_cores)
 
     dists = []
     # rmsd, note that len(core) is not the same, only the number of edges is
@@ -142,6 +158,67 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout):
         sorted_cores.append(all_cores[p])
 
     return sorted_cores
+
+def remove_disconnected_components(mol_a, mol_b, cores):
+    """
+    Iterate over the cores and filter out the disconnected
+    mappings from each core. Return a list of cores that
+    have the largest remaining mapping.
+    """
+    filtered_cores = []
+    for core in cores:
+        core_a = list(core[:, 0])
+        core_b = list(core[:, 1])
+        g_mol_a = mol_to_mapped_bonds_graph(mol_a, core_a)
+        g_mol_b = mol_to_mapped_bonds_graph(mol_b, core_b)
+
+        largest_cc_a = max(nx.connected_components(g_mol_a), key=len)
+        largest_cc_b = max(nx.connected_components(g_mol_b), key=len)
+
+        # pick the smaller connected mapping
+        new_core_idxs = []
+        if len(largest_cc_a) < len(largest_cc_b):
+            # mol_a has the smaller cc
+            for atom_idx in largest_cc_a:
+                new_core_idxs.append(core_a.index(atom_idx))
+        else:
+            # mol_b has the smaller cc
+            for atom_idx in largest_cc_b:
+                new_core_idxs.append(core_b.index(atom_idx))
+        new_core = core[new_core_idxs]
+        filtered_cores.append(new_core)
+
+    filtered_cores_by_size = defaultdict(list)
+    for core in filtered_cores:
+        filtered_cores_by_size[len(core)].append(core)
+
+    # Return the largest core(s)
+    return filtered_cores_by_size[max(filtered_cores_by_size.keys())]
+
+
+def mol_to_mapped_bonds_graph(mol, mapped_idxs) -> nx.Graph:
+    """
+    Convert a given mol to networkx graph, keeping only
+    the bonds that are mapped in the mapped_idxs.
+
+    Parameters
+    ----------
+    mol:
+        Molecule to convert.
+
+    mapped_idxs: List of int
+        The core atom idxs for the given molecule only.
+    """
+    g_mol = nx.Graph()
+    mapped_set = set(mapped_idxs)
+
+    for bond in mol.GetBonds():
+        atom_i = bond.GetBeginAtomIdx()
+        atom_j = bond.GetEndAtomIdx()
+        if atom_i in mapped_set and atom_j in mapped_set:
+            g_mol.add_edge(atom_i, atom_j)
+
+    return g_mol
 
 
 def recenter_mol(mol):
