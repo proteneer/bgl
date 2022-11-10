@@ -58,7 +58,7 @@ def get_romol_bonds(mol):
     return np.array(bonds, dtype=np.int32)
 
 
-def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout=10):
+def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout):
 
     if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
         all_cores = _get_cores_impl(mol_b, mol_a, ring_cutoff, chain_cutoff, timeout)

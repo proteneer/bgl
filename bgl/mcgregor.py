@@ -139,7 +139,6 @@ def mcs(predicate, bonds_a, bonds_b, timeout):
     marcs = initialize_marcs_given_predicate(g_a, g_b, predicate)
 
     start_time = time.time()
-    timeout = 60  # tbd make dynamic
 
     predicate = tuple(tuple(x) for x in predicate)
 
