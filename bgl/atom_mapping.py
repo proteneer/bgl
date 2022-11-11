@@ -62,6 +62,8 @@ def get_romol_bonds(mol):
 
 def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
 
+    assert max_cores > 0
+
     if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
         all_cores, timed_out = _get_cores_impl(mol_b, mol_a, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores)
         new_cores = []
@@ -112,8 +114,9 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_
         is a way to reach the mapped atom without traversing
         over a non-mapped atom.
 
-    max_cores: int
-        maximum number of maximal cores to store
+    max_cores: int or float
+        maximum number of maximal cores to store, this can be an +np.inf if you want
+        every core - when set to 1 this enables a faster predicate that allows for more pruning.
 
     Returns
     -------

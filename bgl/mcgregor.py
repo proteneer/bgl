@@ -199,13 +199,18 @@ def recursion(g1, g2, atom_map_1_to_2, atom_map_2_to_1, layer, marcs, num_edges,
             mcs_result.all_maps = [copy.copy(atom_map_1_to_2)]
             mcs_result.num_edges = num_edges
         elif mcs_result.num_edges == num_edges and len(mcs_result.all_maps) < max_cores:
-            # we can make this even faster probably
             mcs_result.all_maps.append(copy.copy(atom_map_1_to_2))
             pass
         return
 
-    if num_edges < mcs_result.num_edges:
-        return
+    # (ytz): note equality, since we want redundant edges, if we don't, then there is
+    # another ~3x speed-up we can get if we *only* care about getting a single largest mcs
+    if max_cores == 1:
+        if num_edges <= mcs_result.num_edges:
+            return
+    else:
+        if num_edges < mcs_result.num_edges:
+            return
 
     # check possible subtrees
     found = False
