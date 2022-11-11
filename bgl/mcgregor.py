@@ -5,10 +5,7 @@ import time
 
 # when computed on a leaf node this is equal to the number of edges mapped.
 def arcs_left(marcs):
-    count = 0
-    for row in marcs:
-        count += (row > 0)
-    return count
+    return np.count_nonzero(marcs) # slow
 
 UNMAPPED = -1
 
@@ -35,21 +32,28 @@ def initialize_marcs_given_predicate(g1, g2, predicate):
     return marcs
 
 
-# this is the bottleneck
-def refine_marcs(g1, g2, new_v1, new_v2, marcs):
+def refine_marcs(g1, g2, new_v1, new_v2, marcs, num_edges):
     """
     return vertices that have changed
     """
     new_marcs = copy.copy(marcs) # [m for m in marcs]
+    removed_edges = 0
     for e1 in g1.get_edges(new_v1):
         # don't if new_v2 here since new_v2 may be zero!
+        orig = new_marcs[e1]
+
         if new_v2 != UNMAPPED:
-            new_marcs[e1] &= g2.get_edges_as_vector(new_v2)
+            new_val = orig & g2.get_edges_as_vector(new_v2)
         else:
             # v1 is explicitly mapped to None, so we zero out all edges
-            new_marcs[e1] = 0
+            new_val = 0
+        
+        new_marcs[e1] = new_val
 
-    return new_marcs
+        if orig > 0 and new_val == 0:
+            removed_edges += 1
+
+    return new_marcs, num_edges - removed_edges
 
 
 class MCSResult:
@@ -141,7 +145,8 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout):
     priority_idxs = tuple(tuple(x) for x in priority_idxs)
     marcs = convert_matrix_to_bits(marcs)
     start_time = time.time()
-    recursion(g_a, g_b, map_a_to_b, 0, marcs, mcs_result, priority_idxs, start_time, timeout)
+    num_edges = arcs_left(marcs)
+    recursion(g_a, g_b, map_a_to_b, 0, marcs, num_edges, mcs_result, priority_idxs, start_time, timeout)
 
     print("=====NODES VISITED", mcs_result.nodes_visited)
 
@@ -172,7 +177,7 @@ class AtomMap:
         self.map_2_to_1[jdx] = UNMAPPED
 
 
-def recursion(g1, g2, atom_map, layer, marcs, mcs_result, priority_idxs, start_time, timeout):
+def recursion(g1, g2, atom_map, layer, marcs, num_edges, mcs_result, priority_idxs, start_time, timeout):
 
     mcs_result.nodes_visited += 1
 
@@ -181,8 +186,6 @@ def recursion(g1, g2, atom_map, layer, marcs, mcs_result, priority_idxs, start_t
         return
 
     n_a = g1.n_vertices
-
-    num_edges = arcs_left(marcs)
 
     # every atom has been mapped
     if layer == n_a:
@@ -203,8 +206,8 @@ def recursion(g1, g2, atom_map, layer, marcs, mcs_result, priority_idxs, start_t
     for jdx in priority_idxs[layer]:
         if atom_map.map_2_to_1[jdx] == UNMAPPED:
             atom_map.add(layer, jdx)
-            new_marcs = refine_marcs(g1, g2, layer, jdx, marcs)
-            recursion(g1, g2, atom_map, layer + 1, new_marcs, mcs_result, priority_idxs, start_time, timeout)
+            new_marcs, new_edges = refine_marcs(g1, g2, layer, jdx, marcs, num_edges)
+            recursion(g1, g2, atom_map, layer + 1, new_marcs, new_edges, mcs_result, priority_idxs, start_time, timeout)
             atom_map.pop(layer, jdx)
             found = True
 
@@ -212,8 +215,8 @@ def recursion(g1, g2, atom_map, layer, marcs, mcs_result, priority_idxs, start_t
     # (ytz): do we always want to consider this to be a valid possibility?
     if not found:
         # atom_map[layer] = None # don't need, since default is a no-map
-        new_marcs = refine_marcs(g1, g2, layer, UNMAPPED, marcs)  # we can make this probably affect only a subslice!
-        recursion(g1, g2, atom_map, layer + 1, new_marcs, mcs_result, priority_idxs, start_time, timeout)
+        new_marcs, new_edges = refine_marcs(g1, g2, layer, UNMAPPED, marcs, num_edges)  # we can make this probably affect only a subslice!
+        recursion(g1, g2, atom_map, layer + 1, new_marcs, new_edges, mcs_result, priority_idxs, start_time, timeout)
         # atom_map.pop(layer) # don't need to pop, never added anything
 
 
