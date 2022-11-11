@@ -156,11 +156,12 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_conne
 
     start_time = time.time()
     all_cores, timed_out = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout)
-    # print("mcs elapsed_time", time.time()-start_time)
+    print("mcs elapsed_time", time.time()-start_time)
+    return all_cores, timed_out
+
     if keep_connected_component:
         all_cores = remove_disconnected_components(mol_a, mol_b, all_cores)
 
-    return all_cores, timed_out
 
     dists = []
     # rmsd, note that len(core) is not the same, only the number of edges is

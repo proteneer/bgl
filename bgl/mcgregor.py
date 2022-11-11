@@ -5,12 +5,12 @@ import time
 
 # when computed on a leaf node this is equal to the number of edges mapped.
 def arcs_left(marcs):
-    # courtesy of jfass
-    return np.sum(np.any(marcs, 1))
-
+    count = 0
+    for row in marcs:
+        count += (row > 0)
+    return count
 
 UNMAPPED = -1
-
 
 def initialize_marcs_given_predicate(g1, g2, predicate):
     num_a_edges = g1.n_edges
@@ -40,14 +40,14 @@ def refine_marcs(g1, g2, new_v1, new_v2, marcs):
     """
     return vertices that have changed
     """
-    new_marcs = marcs.copy()
+    new_marcs = copy.copy(marcs) # [m for m in marcs]
     for e1 in g1.get_edges(new_v1):
         # don't if new_v2 here since new_v2 may be zero!
         if new_v2 != UNMAPPED:
             new_marcs[e1] &= g2.get_edges_as_vector(new_v2)
         else:
             # v1 is explicitly mapped to None, so we zero out all edges
-            new_marcs[e1, :] = 0
+            new_marcs[e1] = 0
 
     return new_marcs
 
@@ -58,6 +58,17 @@ class MCSResult:
         self.num_edges = 0
         self.timed_out = False
         self.nodes_visited = 0
+
+# from gmpy2 import mpz
+
+def convert_matrix_to_bits(arr):
+    res = []
+    for row in arr:
+        seq = ''.join([str(x) for x in row.tolist()])
+        # res.append(mpz(int(seq, 2)))
+        res.append(int(seq, 2))
+    # print(res)
+    return res
 
 
 class Graph:
@@ -93,12 +104,16 @@ class Graph:
             for edge_idx in edges:
                 self.ve_matrix[vertex_idx][edge_idx] = 1
 
+        # boolean version of ve_matrix
+        self.ve_bits = convert_matrix_to_bits(self.ve_matrix)
+
     def get_edges(self, vertex):
         return self.lol_edges[vertex]
 
     def get_edges_as_vector(self, vertex):
         # return edges as a boolean vetor
-        return self.ve_matrix[vertex]
+        # return self.ve_matrix[vertex]
+        return self.ve_bits[vertex]
 
 
 def build_predicate_matrix(n_a, n_b, priority_idxs):
@@ -123,10 +138,9 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout):
     predicate = build_predicate_matrix(n_a, n_b, priority_idxs)
     marcs = initialize_marcs_given_predicate(g_a, g_b, predicate)
 
-    start_time = time.time()
-
     priority_idxs = tuple(tuple(x) for x in priority_idxs)
-
+    marcs = convert_matrix_to_bits(marcs)
+    start_time = time.time()
     recursion(g_a, g_b, map_a_to_b, 0, marcs, mcs_result, priority_idxs, start_time, timeout)
 
     print("=====NODES VISITED", mcs_result.nodes_visited)
