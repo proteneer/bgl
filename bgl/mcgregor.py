@@ -56,7 +56,8 @@ class MCSResult:
     def __init__(self, maps_1_to_2):
         self.all_maps = [maps_1_to_2]
         self.num_edges = 0
-        self.leafs_visited = 0
+        self.timed_out = False
+        self.nodes_visited = 0
 
 
 class Graph:
@@ -128,6 +129,8 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout):
 
     recursion(g_a, g_b, map_a_to_b, 0, marcs, mcs_result, priority_idxs, start_time, timeout)
 
+    print("=====NODES VISITED", mcs_result.nodes_visited)
+
     all_cores = []
 
     for atom_map in mcs_result.all_maps:
@@ -138,7 +141,7 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout):
         core = np.array(sorted(core))
         all_cores.append(core)
 
-    return all_cores
+    return all_cores, mcs_result.timed_out
 
 
 class AtomMap:
@@ -157,20 +160,18 @@ class AtomMap:
 
 def recursion(g1, g2, atom_map, layer, marcs, mcs_result, priority_idxs, start_time, timeout):
 
+    mcs_result.nodes_visited += 1
+
     if time.time() - start_time > timeout:
-        print("timed out")
+        mcs_result.timed_out = True
         return
 
     n_a = g1.n_vertices
-    n_b = g2.n_vertices
-
-    assert n_a <= n_b
 
     num_edges = arcs_left(marcs)
 
     # every atom has been mapped
     if layer == n_a:
-        mcs_result.leafs_visited += 1
         if mcs_result.num_edges < num_edges:
             mcs_result.all_maps = [copy.deepcopy(atom_map)]
             mcs_result.num_edges = num_edges
@@ -184,7 +185,6 @@ def recursion(g1, g2, atom_map, layer, marcs, mcs_result, priority_idxs, start_t
 
     # check possible subtrees
     found = False
-
     # priority_idxs has shape n_a x n_b, typically this is spatially sorted based on distance
     for jdx in priority_idxs[layer]:
         if atom_map.map_2_to_1[jdx] == UNMAPPED:

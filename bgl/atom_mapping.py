@@ -63,15 +63,15 @@ def get_romol_bonds(mol):
 def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_connected_component=True):
 
     if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
-        all_cores = _get_cores_impl(mol_b, mol_a, ring_cutoff, chain_cutoff, timeout, keep_connected_component)
+        all_cores, timed_out = _get_cores_impl(mol_b, mol_a, ring_cutoff, chain_cutoff, timeout, keep_connected_component)
         new_cores = []
         for core in all_cores:
             core = np.array([(x[1], x[0]) for x in core], dtype=core.dtype)
             new_cores.append(core)
-        return new_cores
+        return new_cores, timed_out
     else:
-        all_cores = _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_connected_component)
-        return all_cores
+        all_cores, timed_out = _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_connected_component)
+        return all_cores, timed_out
 
 
 def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_connected_component):
@@ -155,10 +155,12 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_conne
     import time
 
     start_time = time.time()
-    all_cores = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout)
-    print("elapsed_time", time.time() - start_time)
+    all_cores, timed_out = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout)
+    # print("mcs elapsed_time", time.time()-start_time)
     if keep_connected_component:
         all_cores = remove_disconnected_components(mol_a, mol_b, all_cores)
+
+    return all_cores, timed_out
 
     dists = []
     # rmsd, note that len(core) is not the same, only the number of edges is
@@ -173,7 +175,7 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_conne
     for p in np.argsort(dists):
         sorted_cores.append(all_cores[p])
 
-    return sorted_cores
+    return sorted_cores, timed_out
 
 
 def remove_disconnected_components(mol_a, mol_b, cores):
