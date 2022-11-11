@@ -50,6 +50,15 @@ def get_romol_conf(mol):
     return guest_conf / 10  # from angstroms to nm
 
 
+def get_mol_center(mol):
+    g = nx.Graph()
+    for bond in mol.GetBonds():
+        src, dst = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
+        g.add_edge(src, dst)
+
+    return nx.center(g)[0]
+
+
 def get_romol_bonds(mol):
     bonds = []
 
@@ -60,23 +69,60 @@ def get_romol_bonds(mol):
     return np.array(bonds, dtype=np.int32)
 
 
-def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
+def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, bf_cutoff, timeout, connected_core, max_cores):
 
     assert max_cores > 0
 
     if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
-        all_cores, timed_out = _get_cores_impl(mol_b, mol_a, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores)
+        all_cores, timed_out = _get_cores_impl(
+            mol_b, mol_a, ring_cutoff, chain_cutoff, bf_cutoff, timeout, connected_core, max_cores
+        )
         new_cores = []
         for core in all_cores:
             core = np.array([(x[1], x[0]) for x in core], dtype=core.dtype)
             new_cores.append(core)
         return new_cores, timed_out
     else:
-        all_cores, timed_out = _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores)
+        all_cores, timed_out = _get_cores_impl(
+            mol_a, mol_b, ring_cutoff, chain_cutoff, bf_cutoff, timeout, connected_core, max_cores
+        )
         return all_cores, timed_out
 
 
-def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
+def bfs(g, atom):
+    depth = 0
+    cur_layer = [atom]
+    levels = {}
+    while len(levels) != g.GetNumAtoms():
+        next_layer = []
+        for layer_atom in cur_layer:
+            levels[layer_atom.GetIdx()] = depth
+            for nb_atom in layer_atom.GetNeighbors():
+                if nb_atom.GetIdx() not in levels:
+                    next_layer.append(nb_atom)
+        cur_layer = next_layer
+        depth += 1
+    levels_array = [-1] * g.GetNumAtoms()
+    for i, l in levels.items():
+        levels_array[i] = l
+    return levels_array
+
+
+def reorder_atoms(mol):
+
+    center_idx = get_mol_center(mol)
+    center_atom = mol.GetAtomWithIdx(center_idx)
+    levels = bfs(mol, center_atom)
+    perm = np.argsort(levels)
+    new_mol = Chem.RenumberAtoms(mol, perm.tolist())
+    return new_mol
+
+
+#     # reorder atoms so that
+#     # 1) find the centroid and the atom closest to the centroid
+
+
+def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, bf_cutoff, timeout, connected_core, max_cores):
     """
     Find a reasonable core between two molecules. This function takes in two cutoff parameters:
 
@@ -104,6 +150,10 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_
     chain_cutoff: float
         The distance cutoff that non-ring atoms must satisfy.
 
+    bf_cutoff: int
+        Maximum branching factor any given atom is allowed to have. Truncated atoms are
+        further away than kept atoms.
+
     timeout: int
         Maximum number of seconds before returning.
 
@@ -124,6 +174,7 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_
 
 
     """
+    mol_a = reorder_atoms(mol_a)  # UNINVERT
 
     bonds_a = get_romol_bonds(mol_a)
     bonds_b = get_romol_bonds(mol_b)
@@ -153,7 +204,10 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_
             if idx in allowed_idxs:
                 final_idxs.append(idx)
 
-        priority_idxs.append(final_idxs)
+        priority_idxs.append(final_idxs[:bf_cutoff])
+
+    # for idx, r in enumerate(priority_idxs):
+    # print("atom", idx, "in mol_a has", len(r), "allowed matches")
 
     n_a = len(conf_a)
     n_b = len(conf_b)
@@ -162,12 +216,11 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_
 
     start_time = time.time()
     all_cores, timed_out = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores)
-    print("mcs elapsed_time", time.time()-start_time)
+    print("mcs elapsed_time", time.time() - start_time)
     return all_cores, timed_out
 
     if connected_core:
         all_cores = remove_disconnected_components(mol_a, mol_b, all_cores)
-
 
     dists = []
     # rmsd, note that len(core) is not the same, only the number of edges is

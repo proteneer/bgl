@@ -5,9 +5,11 @@ import time
 
 # when computed on a leaf node this is equal to the number of edges mapped.
 def arcs_left(marcs):
-    return np.count_nonzero(marcs) # slow
+    return np.count_nonzero(marcs)  # slow
+
 
 UNMAPPED = -1
+
 
 def initialize_marcs_given_predicate(g1, g2, predicate):
     num_a_edges = g1.n_edges
@@ -36,7 +38,7 @@ def refine_marcs(g1, g2, new_v1, new_v2, marcs, num_edges):
     """
     return vertices that have changed
     """
-    new_marcs = copy.copy(marcs) # [m for m in marcs]
+    new_marcs = copy.copy(marcs)  # [m for m in marcs]
     removed_edges = 0
     for e1 in g1.get_edges(new_v1):
         orig = new_marcs[e1]
@@ -44,7 +46,7 @@ def refine_marcs(g1, g2, new_v1, new_v2, marcs, num_edges):
             new_val = orig & g2.get_edges_as_vector(new_v2)
         else:
             new_val = 0
-        
+
         new_marcs[e1] = new_val
 
         if orig > 0 and new_val == 0:
@@ -60,12 +62,14 @@ class MCSResult:
         self.timed_out = False
         self.nodes_visited = 0
 
+
 # from gmpy2 import mpz
+
 
 def convert_matrix_to_bits(arr):
     res = []
     for row in arr:
-        seq = ''.join([str(x) for x in row.tolist()])
+        seq = "".join([str(x) for x in row.tolist()])
         # res.append(mpz(int(seq, 2)))
         res.append(int(seq, 2))
     # print(res)
@@ -78,10 +82,12 @@ class Graph:
         self.n_edges = len(edges)
         self.edges = edges
 
-        cmat = np.zeros((n_vertices, n_vertices))
+        cmat = np.zeros((n_vertices, n_vertices), dtype=np.int32)
         for i, j in edges:
             cmat[i][j] = 1
             cmat[j][i] = 1
+
+        self.cmat = cmat
 
         # list of lists, n_vertices x n_vertices
         self.lol_vertices = []
@@ -108,6 +114,9 @@ class Graph:
         # boolean version of ve_matrix
         self.ve_bits = convert_matrix_to_bits(self.ve_matrix)
 
+    def get_neighbors(self, vertex):
+        return self.lol_vertices[vertex]
+
     def get_edges(self, vertex):
         return self.lol_edges[vertex]
 
@@ -115,6 +124,15 @@ class Graph:
         # return edges as a boolean vetor
         # return self.ve_matrix[vertex]
         return self.ve_bits[vertex]
+
+
+def max_tree_size(priority_list):
+    cur_layer_size = 1
+    layer_sizes = [cur_layer_size]
+    for neighbors in priority_list:
+        cur_layer_size *= len(neighbors)
+        layer_sizes.append(cur_layer_size)
+    return sum(layer_sizes)
 
 
 def build_predicate_matrix(n_a, n_b, priority_idxs):
@@ -127,6 +145,9 @@ def build_predicate_matrix(n_a, n_b, priority_idxs):
 
 
 def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
+
+    # print("layer size (unsorted):", max_tree_size(priority_idxs))
+    # print("layer size (sorted)  :", max_tree_size(sorted(priority_idxs, key=lambda x: len(x))))
 
     assert n_a <= n_b
 
@@ -145,7 +166,9 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
     marcs = convert_matrix_to_bits(marcs)
     start_time = time.time()
     num_edges = arcs_left(marcs)
-    recursion(g_a, g_b, map_a_to_b, map_b_to_a, 0, marcs, num_edges, mcs_result, priority_idxs, start_time, timeout, max_cores)
+    recursion(
+        g_a, g_b, map_a_to_b, map_b_to_a, 0, marcs, num_edges, mcs_result, priority_idxs, start_time, timeout, max_cores
+    )
 
     print("=====NODES VISITED", mcs_result.nodes_visited)
 
@@ -175,15 +198,31 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
 #         self.map_1_to_2[idx] = UNMAPPED
 #         self.map_2_to_1[jdx] = UNMAPPED
 
+
 def atom_map_add(map_1_to_2, map_2_to_1, idx, jdx):
     map_1_to_2[idx] = jdx
     map_2_to_1[jdx] = idx
+
 
 def atom_map_pop(map_1_to_2, map_2_to_1, idx, jdx):
     map_1_to_2[idx] = UNMAPPED
     map_2_to_1[jdx] = UNMAPPED
 
-def recursion(g1, g2, atom_map_1_to_2, atom_map_2_to_1, layer, marcs, num_edges, mcs_result, priority_idxs, start_time, timeout, max_cores):
+
+def recursion(
+    g1,
+    g2,
+    atom_map_1_to_2,
+    atom_map_2_to_1,
+    layer,
+    marcs,
+    num_edges,
+    mcs_result,
+    priority_idxs,
+    start_time,
+    timeout,
+    max_cores,
+):
 
     mcs_result.nodes_visited += 1
 
@@ -213,21 +252,81 @@ def recursion(g1, g2, atom_map_1_to_2, atom_map_2_to_1, layer, marcs, num_edges,
             return
 
     # check possible subtrees
-    found = False
+
     # priority_idxs has shape n_a x n_b, typically this is spatially sorted based on distance
+
+    edge_count = []
+    edge_jdxs = []
+
+    # prioritize connected edges, then if there's tie break prioritize the closer one, no need
+    # to resort since already monotone in input
+
+    # loop over atoms in the second mol that are candidates for layer mol
+
+    connected_jdxs = []
+    unconnected_jdxs = []
+
+    # prioritize growing connected cores
+    # for jdx in priority_idxs[layer]:
+    #     # ensure jdx not mapped
+    #     if atom_map_2_to_1[jdx] == UNMAPPED:
+    #         check = False
+    #         # get neighbors of jdx, and see if at least one of them is a core
+    #         for nb in g2.get_neighbors(jdx):
+    #             if atom_map_2_to_1[nb] != UNMAPPED:
+    #                 check = True
+    #                 break
+    #         if check:
+    #             connected_jdxs.append(jdx)
+    #         else:
+    #             unconnected_jdxs.append(jdx)
+
+    # probably slow, filter into "good list and bad list
+    best_edge_jdxs = connected_jdxs + unconnected_jdxs
+    found = False
+    # for jdx in best_edge_jdxs:
     for jdx in priority_idxs[layer]:
-        if atom_map_2_to_1[jdx] == UNMAPPED:
+
+        if atom_map_2_to_1[jdx] == UNMAPPED:  # optimize later
             atom_map_add(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
             new_marcs, new_edges = refine_marcs(g1, g2, layer, jdx, marcs, num_edges)
-            recursion(g1, g2, atom_map_1_to_2, atom_map_2_to_1, layer + 1, new_marcs, new_edges, mcs_result, priority_idxs, start_time, timeout, max_cores)
+            recursion(
+                g1,
+                g2,
+                atom_map_1_to_2,
+                atom_map_2_to_1,
+                layer + 1,
+                new_marcs,
+                new_edges,
+                mcs_result,
+                priority_idxs,
+                start_time,
+                timeout,
+                max_cores,
+            )
             atom_map_pop(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
             found = True
 
     # handle the case where we have no valid matches (due to the predicate conditions)
     # (ytz): do we always want to consider this to be a valid possibility?
     if not found:
-        new_marcs, new_edges = refine_marcs(g1, g2, layer, UNMAPPED, marcs, num_edges)  # we can make this probably affect only a subslice!
-        recursion(g1, g2, atom_map_1_to_2, atom_map_2_to_1, layer + 1, new_marcs, new_edges, mcs_result, priority_idxs, start_time, timeout, max_cores)
+        new_marcs, new_edges = refine_marcs(
+            g1, g2, layer, UNMAPPED, marcs, num_edges
+        )  # we can make this probably affect only a subslice!
+        recursion(
+            g1,
+            g2,
+            atom_map_1_to_2,
+            atom_map_2_to_1,
+            layer + 1,
+            new_marcs,
+            new_edges,
+            mcs_result,
+            priority_idxs,
+            start_time,
+            timeout,
+            max_cores,
+        )
 
 
 def test_compute_marcs():
