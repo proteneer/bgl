@@ -16,8 +16,7 @@ def run():
     for idx, mol_a in enumerate(mols[:5]):
         for mol_b in mols[idx + 1 :5]:
 
-            # all_cores = atom_mapping.get_core(mol_a, mol_b, ring_cutoff=0.1, chain_cutoff=0.0, timeout=60)
-            all_cores, _ = atom_mapping.get_cores(mol_a, mol_b, ring_cutoff=0.1, chain_cutoff=0.2, timeout=60)
+            all_cores, _ = atom_mapping.get_cores(mol_a, mol_b, ring_cutoff=0.1, chain_cutoff=0.2, timeout=60, connected_core=True, max_cores=100)
             for core_idx, core in enumerate(all_cores[:1]):
                 res = atom_mapping.plot_atom_mapping_grid(mol_a, mol_b, core, num_rotations=5)
 

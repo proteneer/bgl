@@ -60,21 +60,21 @@ def get_romol_bonds(mol):
     return np.array(bonds, dtype=np.int32)
 
 
-def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_connected_component=True):
+def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
 
     if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
-        all_cores, timed_out = _get_cores_impl(mol_b, mol_a, ring_cutoff, chain_cutoff, timeout, keep_connected_component)
+        all_cores, timed_out = _get_cores_impl(mol_b, mol_a, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores)
         new_cores = []
         for core in all_cores:
             core = np.array([(x[1], x[0]) for x in core], dtype=core.dtype)
             new_cores.append(core)
         return new_cores, timed_out
     else:
-        all_cores, timed_out = _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_connected_component)
+        all_cores, timed_out = _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores)
         return all_cores, timed_out
 
 
-def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_connected_component):
+def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
     """
     Find a reasonable core between two molecules. This function takes in two cutoff parameters:
 
@@ -105,12 +105,15 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_conne
     timeout: int
         Maximum number of seconds before returning.
 
-    keep_connected_component: bool
+    connected_core: bool
         Set to True to only keep the largest connected
         subgraph in the mapping. The definition of connected
         here is different from McGregor. Here it means there
         is a way to reach the mapped atom without traversing
         over a non-mapped atom.
+
+    max_cores: int
+        maximum number of maximal cores to store
 
     Returns
     -------
@@ -155,11 +158,11 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, keep_conne
     import time
 
     start_time = time.time()
-    all_cores, timed_out = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout)
+    all_cores, timed_out = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores)
     print("mcs elapsed_time", time.time()-start_time)
     return all_cores, timed_out
 
-    if keep_connected_component:
+    if connected_core:
         all_cores = remove_disconnected_components(mol_a, mol_b, all_cores)
 
 

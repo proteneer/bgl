@@ -39,13 +39,10 @@ def refine_marcs(g1, g2, new_v1, new_v2, marcs, num_edges):
     new_marcs = copy.copy(marcs) # [m for m in marcs]
     removed_edges = 0
     for e1 in g1.get_edges(new_v1):
-        # don't if new_v2 here since new_v2 may be zero!
         orig = new_marcs[e1]
-
         if new_v2 != UNMAPPED:
             new_val = orig & g2.get_edges_as_vector(new_v2)
         else:
-            # v1 is explicitly mapped to None, so we zero out all edges
             new_val = 0
         
         new_marcs[e1] = new_val
@@ -129,14 +126,16 @@ def build_predicate_matrix(n_a, n_b, priority_idxs):
     return pmat
 
 
-def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout):
+def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
 
     assert n_a <= n_b
 
     g_a = Graph(n_a, bonds_a)
     g_b = Graph(n_b, bonds_b)
 
-    map_a_to_b = AtomMap(n_a, n_b)
+    # map_a_to_b = AtomMap(n_a, n_b)
+    map_a_to_b = [UNMAPPED] * n_a
+    map_b_to_a = [UNMAPPED] * n_b
     mcs_result = MCSResult(map_a_to_b)
 
     predicate = build_predicate_matrix(n_a, n_b, priority_idxs)
@@ -146,15 +145,15 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout):
     marcs = convert_matrix_to_bits(marcs)
     start_time = time.time()
     num_edges = arcs_left(marcs)
-    recursion(g_a, g_b, map_a_to_b, 0, marcs, num_edges, mcs_result, priority_idxs, start_time, timeout)
+    recursion(g_a, g_b, map_a_to_b, map_b_to_a, 0, marcs, num_edges, mcs_result, priority_idxs, start_time, timeout, max_cores)
 
     print("=====NODES VISITED", mcs_result.nodes_visited)
 
     all_cores = []
 
-    for atom_map in mcs_result.all_maps:
+    for atom_map_1_to_2 in mcs_result.all_maps:
         core = []
-        for a, b in enumerate(atom_map.map_1_to_2):
+        for a, b in enumerate(atom_map_1_to_2):
             if b != UNMAPPED:
                 core.append((a, b))
         core = np.array(sorted(core))
@@ -163,21 +162,28 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout):
     return all_cores, mcs_result.timed_out
 
 
-class AtomMap:
-    def __init__(self, n_a, n_b):
-        self.map_1_to_2 = [UNMAPPED] * n_a
-        self.map_2_to_1 = [UNMAPPED] * n_b
+# class AtomMap:
+#     def __init__(self, n_a, n_b):
+#         self.map_1_to_2 = [UNMAPPED] * n_a
+#         self.map_2_to_1 = [UNMAPPED] * n_b
 
-    def add(self, idx, jdx):
-        self.map_1_to_2[idx] = jdx
-        self.map_2_to_1[jdx] = idx
+#     def add(self, idx, jdx):
+#         self.map_1_to_2[idx] = jdx
+#         self.map_2_to_1[jdx] = idx
 
-    def pop(self, idx, jdx):
-        self.map_1_to_2[idx] = UNMAPPED
-        self.map_2_to_1[jdx] = UNMAPPED
+#     def pop(self, idx, jdx):
+#         self.map_1_to_2[idx] = UNMAPPED
+#         self.map_2_to_1[jdx] = UNMAPPED
 
+def atom_map_add(map_1_to_2, map_2_to_1, idx, jdx):
+    map_1_to_2[idx] = jdx
+    map_2_to_1[jdx] = idx
 
-def recursion(g1, g2, atom_map, layer, marcs, num_edges, mcs_result, priority_idxs, start_time, timeout):
+def atom_map_pop(map_1_to_2, map_2_to_1, idx, jdx):
+    map_1_to_2[idx] = UNMAPPED
+    map_2_to_1[jdx] = UNMAPPED
+
+def recursion(g1, g2, atom_map_1_to_2, atom_map_2_to_1, layer, marcs, num_edges, mcs_result, priority_idxs, start_time, timeout, max_cores):
 
     mcs_result.nodes_visited += 1
 
@@ -190,11 +196,12 @@ def recursion(g1, g2, atom_map, layer, marcs, num_edges, mcs_result, priority_id
     # every atom has been mapped
     if layer == n_a:
         if mcs_result.num_edges < num_edges:
-            mcs_result.all_maps = [copy.deepcopy(atom_map)]
+            mcs_result.all_maps = [copy.copy(atom_map_1_to_2)]
             mcs_result.num_edges = num_edges
-        elif mcs_result.num_edges == num_edges:
-            # print("Found an equal or better complete map with", num_edges, "edges")
-            mcs_result.all_maps.append(copy.deepcopy(atom_map))
+        elif mcs_result.num_edges == num_edges and len(mcs_result.all_maps) < max_cores:
+            # we can make this even faster probably
+            mcs_result.all_maps.append(copy.copy(atom_map_1_to_2))
+            pass
         return
 
     if num_edges < mcs_result.num_edges:
@@ -204,20 +211,18 @@ def recursion(g1, g2, atom_map, layer, marcs, num_edges, mcs_result, priority_id
     found = False
     # priority_idxs has shape n_a x n_b, typically this is spatially sorted based on distance
     for jdx in priority_idxs[layer]:
-        if atom_map.map_2_to_1[jdx] == UNMAPPED:
-            atom_map.add(layer, jdx)
+        if atom_map_2_to_1[jdx] == UNMAPPED:
+            atom_map_add(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
             new_marcs, new_edges = refine_marcs(g1, g2, layer, jdx, marcs, num_edges)
-            recursion(g1, g2, atom_map, layer + 1, new_marcs, new_edges, mcs_result, priority_idxs, start_time, timeout)
-            atom_map.pop(layer, jdx)
+            recursion(g1, g2, atom_map_1_to_2, atom_map_2_to_1, layer + 1, new_marcs, new_edges, mcs_result, priority_idxs, start_time, timeout, max_cores)
+            atom_map_pop(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
             found = True
 
     # handle the case where we have no valid matches (due to the predicate conditions)
     # (ytz): do we always want to consider this to be a valid possibility?
     if not found:
-        # atom_map[layer] = None # don't need, since default is a no-map
         new_marcs, new_edges = refine_marcs(g1, g2, layer, UNMAPPED, marcs, num_edges)  # we can make this probably affect only a subslice!
-        recursion(g1, g2, atom_map, layer + 1, new_marcs, new_edges, mcs_result, priority_idxs, start_time, timeout)
-        # atom_map.pop(layer) # don't need to pop, never added anything
+        recursion(g1, g2, atom_map_1_to_2, atom_map_2_to_1, layer + 1, new_marcs, new_edges, mcs_result, priority_idxs, start_time, timeout, max_cores)
 
 
 def test_compute_marcs():
