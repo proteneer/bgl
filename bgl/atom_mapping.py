@@ -163,11 +163,9 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_
     start_time = time.time()
     all_cores, timed_out = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores)
     print("mcs elapsed_time", time.time()-start_time)
-    return all_cores, timed_out
 
     if connected_core:
         all_cores = remove_disconnected_components(mol_a, mol_b, all_cores)
-
 
     dists = []
     # rmsd, note that len(core) is not the same, only the number of edges is
@@ -193,25 +191,39 @@ def remove_disconnected_components(mol_a, mol_b, cores):
     """
     filtered_cores = []
     for core in cores:
-        core_a = list(core[:, 0])
-        core_b = list(core[:, 1])
-        g_mol_a = mol_to_mapped_bonds_graph(mol_a, core_a)
-        g_mol_b = mol_to_mapped_bonds_graph(mol_b, core_b)
 
-        largest_cc_a = max(nx.connected_components(g_mol_a), key=len)
-        largest_cc_b = max(nx.connected_components(g_mol_b), key=len)
+        new_core = core
+        while True:
+            core_a = list(new_core[:, 0])
+            core_b = list(new_core[:, 1])
 
-        # pick the smaller connected mapping
-        new_core_idxs = []
-        if len(largest_cc_a) < len(largest_cc_b):
-            # mol_a has the smaller cc
-            for atom_idx in largest_cc_a:
-                new_core_idxs.append(core_a.index(atom_idx))
-        else:
-            # mol_b has the smaller cc
-            for atom_idx in largest_cc_b:
-                new_core_idxs.append(core_b.index(atom_idx))
-        new_core = core[new_core_idxs]
+            g_mol_a = mol_to_mapped_bonds_graph(mol_a, core_a)
+            g_mol_b = mol_to_mapped_bonds_graph(mol_b, core_b)
+
+            cc_a = list(nx.connected_components(g_mol_a))
+            cc_b = list(nx.connected_components(g_mol_b))
+
+            # stop when the core is fully connected
+            if len(cc_a) == 1 and len(cc_b) == 1:
+                break
+
+            largest_cc_a = max(cc_a, key=len)
+            largest_cc_b = max(cc_b, key=len)
+
+            # pick the smaller connected mapping
+            new_core_idxs = []
+            if len(largest_cc_a) < len(largest_cc_b):
+                # mol_a has the smaller cc
+                for atom_idx in largest_cc_a:
+                    core_idx = core_a.index(atom_idx)
+                    new_core_idxs.append(core_idx)
+            else:
+                # mol_b has the smaller cc
+                for atom_idx in largest_cc_b:
+                    core_idx = core_b.index(atom_idx)
+                    new_core_idxs.append(core_idx)
+            new_core = new_core[new_core_idxs]
+
         filtered_cores.append(new_core)
 
     filtered_cores_by_size = defaultdict(list)
@@ -237,6 +249,12 @@ def mol_to_mapped_bonds_graph(mol, mapped_idxs) -> nx.Graph:
     """
     g_mol = nx.Graph()
     mapped_set = set(mapped_idxs)
+
+    # Include atoms for the single disconnected atom check
+    for atom in mol.GetAtoms():
+        atom_i = atom.GetIdx()
+        if atom_i in mapped_set:
+            g_mol.add_node(atom_i)
 
     for bond in mol.GetBonds():
         atom_i = bond.GetBeginAtomIdx()
