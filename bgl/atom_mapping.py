@@ -50,12 +50,11 @@ def get_romol_conf(mol):
     return guest_conf / 10  # from angstroms to nm
 
 
-def get_mol_center(mol):
+def get_jordan_center(mol):
     g = nx.Graph()
     for bond in mol.GetBonds():
         src, dst = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
         g.add_edge(src, dst)
-
     return nx.center(g)[0]
 
 
@@ -69,13 +68,13 @@ def get_romol_bonds(mol):
     return np.array(bonds, dtype=np.int32)
 
 
-def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, bf_cutoff, timeout, connected_core, max_cores):
+def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
 
     assert max_cores > 0
 
     if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
         all_cores, timed_out = _get_cores_impl(
-            mol_b, mol_a, ring_cutoff, chain_cutoff, bf_cutoff, timeout, connected_core, max_cores
+            mol_b, mol_a, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores
         )
         new_cores = []
         for core in all_cores:
@@ -84,7 +83,7 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, bf_cutoff, timeout, conne
         return new_cores, timed_out
     else:
         all_cores, timed_out = _get_cores_impl(
-            mol_a, mol_b, ring_cutoff, chain_cutoff, bf_cutoff, timeout, connected_core, max_cores
+            mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores
         )
         return all_cores, timed_out
 
@@ -109,20 +108,15 @@ def bfs(g, atom):
 
 
 def reorder_atoms(mol):
-
-    center_idx = get_mol_center(mol)
+    center_idx = get_jordan_center(mol)
     center_atom = mol.GetAtomWithIdx(center_idx)
     levels = bfs(mol, center_atom)
     perm = np.argsort(levels)
     new_mol = Chem.RenumberAtoms(mol, perm.tolist())
-    return new_mol
+    return new_mol, perm
 
 
-#     # reorder atoms so that
-#     # 1) find the centroid and the atom closest to the centroid
-
-
-def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, bf_cutoff, timeout, connected_core, max_cores):
+def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
     """
     Find a reasonable core between two molecules. This function takes in two cutoff parameters:
 
@@ -150,10 +144,6 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, bf_cutoff, timeout,
     chain_cutoff: float
         The distance cutoff that non-ring atoms must satisfy.
 
-    bf_cutoff: int
-        Maximum branching factor any given atom is allowed to have. Truncated atoms are
-        further away than kept atoms.
-
     timeout: int
         Maximum number of seconds before returning.
 
@@ -174,7 +164,7 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, bf_cutoff, timeout,
 
 
     """
-    mol_a = reorder_atoms(mol_a)  # UNINVERT
+    mol_a, perm = reorder_atoms(mol_a)  # UNINVERT
 
     bonds_a = get_romol_bonds(mol_a)
     bonds_b = get_romol_bonds(mol_b)
@@ -204,7 +194,7 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, bf_cutoff, timeout,
             if idx in allowed_idxs:
                 final_idxs.append(idx)
 
-        priority_idxs.append(final_idxs[:bf_cutoff])
+        priority_idxs.append(final_idxs)
 
     # for idx, r in enumerate(priority_idxs):
     # print("atom", idx, "in mol_a has", len(r), "allowed matches")
@@ -212,11 +202,15 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, bf_cutoff, timeout,
     n_a = len(conf_a)
     n_b = len(conf_b)
 
-    import time
-
-    start_time = time.time()
     all_cores, timed_out = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores)
-    print("mcs elapsed_time", time.time() - start_time)
+
+    # undo the sort
+    for core in all_cores:
+        inv_core = []
+        for atom in core[:, 0]:
+            inv_core.append(perm[atom])
+        core[:, 0] = inv_core
+
     return all_cores, timed_out
 
     if connected_core:

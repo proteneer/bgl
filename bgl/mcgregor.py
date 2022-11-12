@@ -177,20 +177,6 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
     return all_cores, mcs_result.timed_out
 
 
-# class AtomMap:
-#     def __init__(self, n_a, n_b):
-#         self.map_1_to_2 = [UNMAPPED] * n_a
-#         self.map_2_to_1 = [UNMAPPED] * n_b
-
-#     def add(self, idx, jdx):
-#         self.map_1_to_2[idx] = jdx
-#         self.map_2_to_1[jdx] = idx
-
-#     def pop(self, idx, jdx):
-#         self.map_1_to_2[idx] = UNMAPPED
-#         self.map_2_to_1[jdx] = UNMAPPED
-
-
 def atom_map_add(map_1_to_2, map_2_to_1, idx, jdx):
     map_1_to_2[idx] = jdx
     map_2_to_1[jdx] = idx
