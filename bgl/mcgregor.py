@@ -220,7 +220,6 @@ def recursion(
         if num_edges < mcs_result.num_edges:
             return
 
-    found = False
     for jdx in priority_idxs[layer]:
         if atom_map_2_to_1[jdx] == UNMAPPED:  # optimize later
             atom_map_add(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
@@ -240,28 +239,25 @@ def recursion(
                 max_cores,
             )
             atom_map_pop(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
-            found = True
 
-    # handle the case where we have no valid matches (due to the predicate conditions)
-    # (ytz): do we always want to consider this to be a valid possibility?
-    if not found:
-        new_marcs, new_edges = refine_marcs(
-            g1, g2, layer, UNMAPPED, marcs, num_edges
-        )  # we can make this probably affect only a subslice!
-        recursion(
-            g1,
-            g2,
-            atom_map_1_to_2,
-            atom_map_2_to_1,
-            layer + 1,
-            new_marcs,
-            new_edges,
-            mcs_result,
-            priority_idxs,
-            start_time,
-            timeout,
-            max_cores,
-        )
+    # also allow for explicitly not mapping layer atom
+    new_marcs, new_edges = refine_marcs(
+        g1, g2, layer, UNMAPPED, marcs, num_edges
+    )  # we can make this probably affect only a subslice!
+    recursion(
+        g1,
+        g2,
+        atom_map_1_to_2,
+        atom_map_2_to_1,
+        layer + 1,
+        new_marcs,
+        new_edges,
+        mcs_result,
+        priority_idxs,
+        start_time,
+        timeout,
+        max_cores,
+    )
 
 
 def test_compute_marcs():
