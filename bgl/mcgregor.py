@@ -62,19 +62,12 @@ class MCSResult:
         self.timed_out = False
         self.nodes_visited = 0
 
-
-# from gmpy2 import mpz
-
-
 def convert_matrix_to_bits(arr):
     res = []
     for row in arr:
         seq = "".join([str(x) for x in row.tolist()])
-        # res.append(mpz(int(seq, 2)))
         res.append(int(seq, 2))
-    # print(res)
     return res
-
 
 class Graph:
     def __init__(self, n_vertices, edges):
@@ -154,7 +147,6 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
     g_a = Graph(n_a, bonds_a)
     g_b = Graph(n_b, bonds_b)
 
-    # map_a_to_b = AtomMap(n_a, n_b)
     map_a_to_b = [UNMAPPED] * n_a
     map_b_to_a = [UNMAPPED] * n_b
     mcs_result = MCSResult(map_a_to_b)
@@ -170,7 +162,7 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
         g_a, g_b, map_a_to_b, map_b_to_a, 0, marcs, num_edges, mcs_result, priority_idxs, start_time, timeout, max_cores
     )
 
-    print("=====NODES VISITED", mcs_result.nodes_visited)
+    print("=====NODES VISITED", mcs_result.nodes_visited,"=========")
 
     all_cores = []
 
@@ -251,42 +243,8 @@ def recursion(
         if num_edges < mcs_result.num_edges:
             return
 
-    # check possible subtrees
-
-    # priority_idxs has shape n_a x n_b, typically this is spatially sorted based on distance
-
-    edge_count = []
-    edge_jdxs = []
-
-    # prioritize connected edges, then if there's tie break prioritize the closer one, no need
-    # to resort since already monotone in input
-
-    # loop over atoms in the second mol that are candidates for layer mol
-
-    connected_jdxs = []
-    unconnected_jdxs = []
-
-    # prioritize growing connected cores
-    # for jdx in priority_idxs[layer]:
-    #     # ensure jdx not mapped
-    #     if atom_map_2_to_1[jdx] == UNMAPPED:
-    #         check = False
-    #         # get neighbors of jdx, and see if at least one of them is a core
-    #         for nb in g2.get_neighbors(jdx):
-    #             if atom_map_2_to_1[nb] != UNMAPPED:
-    #                 check = True
-    #                 break
-    #         if check:
-    #             connected_jdxs.append(jdx)
-    #         else:
-    #             unconnected_jdxs.append(jdx)
-
-    # probably slow, filter into "good list and bad list
-    best_edge_jdxs = connected_jdxs + unconnected_jdxs
     found = False
-    # for jdx in best_edge_jdxs:
     for jdx in priority_idxs[layer]:
-
         if atom_map_2_to_1[jdx] == UNMAPPED:  # optimize later
             atom_map_add(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
             new_marcs, new_edges = refine_marcs(g1, g2, layer, jdx, marcs, num_edges)
