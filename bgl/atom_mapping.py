@@ -14,15 +14,11 @@ from bgl import mcgregor
 # Backtrack search algorithms and the maximal common subgraph problem
 # James J McGregor,  January 1982, https://doi.org/10.1002/spe.4380120103
 
-# Our MCS library makes use of the following engineering and theoretical tricks:
-# Engineering
-# 1) 
-
-
-
-# Theoretical
-# -----------
-# Our algorithm is fairly unique in that we:
+# Theoretical Tricks
+# ------------------
+# The general motivation for all MCS libraries boils down to the problem of finding the largest core as soon as possible,
+# since the existence of the largest core helps the subtree filtering heuristic to remove subtrees as large as possible.
+# Notably, we:
 # - designed the method for free energy methods where the provided two molecules are aligned.
 # - only generate an atom-mapping between two mols, where as RDKit generates a common substructure between N mols
 # - operate on anonymous graphs (free of type information)  atom-atom compatibility via a predicates matrix
@@ -31,7 +27,17 @@ from bgl import mcgregor
 # - re-order the vertices in graph based on the jordan center, which allows the traversal to 
 #    prioritize (but not require) connected components.
 # - actually prune and refine the marcs (edge-edge mapping matrix) to remove subtrees, unlike boost::graph::mcgregor
-# - provide a hard guarantee for timeout
+# - provide a hard guarantee for timeout, i.e. completion of the algorithm implies global optimum(s) have been found
+# - when searching for atoms in mol_b to map, we prioritize based on distance
+
+# Engineering Tricks
+# ------------------
+# This is entirely written in python, which lends to its ease of use and modifiability. The following optimizations were
+# implemented (without changing the number of nodes visited):
+# - multiple representations of graph structures to improve efficiency
+# - refinement of marcs matrix is now done via bit operations, whereby boolean vectors are encoded as simple python ints
+# - we avoid overhead associated with copying class instance, using primitives where possible
+
 
 def score_2d(conf, norm=2):
     # get the goodness of a 2D depiction

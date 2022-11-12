@@ -7,7 +7,6 @@ import time
 def arcs_left(marcs):
     return np.count_nonzero(marcs)  # slow
 
-
 UNMAPPED = -1
 
 
