@@ -18,13 +18,13 @@ def run():
             all_cores, _ = atom_mapping.get_cores(
                 mol_a, mol_b, ring_cutoff=0.1, chain_cutoff=0.2, timeout=60, connected_core=True, max_cores=float("inf")
             )
-            for core_idx, core in enumerate(all_cores[:1]):
-                res = atom_mapping.plot_atom_mapping_grid(mol_a, mol_b, core, num_rotations=5)
+            # for core_idx, core in enumerate(all_cores[:1]):
+            #     res = atom_mapping.plot_atom_mapping_grid(mol_a, mol_b, core, num_rotations=5)
 
-                with open(
-                    f"atom_mapping_{get_mol_name(mol_a)}_to_{get_mol_name(mol_b)}_core_{core_idx}.svg", "w"
-                ) as fh:
-                    fh.write(res)
+            #     with open(
+            #         f"atom_mapping_{get_mol_name(mol_a)}_to_{get_mol_name(mol_b)}_core_{core_idx}.svg", "w"
+            #     ) as fh:
+            #         fh.write(res)
 
             print(
                 f"{mol_a.GetProp('_Name')} -> {mol_b.GetProp('_Name')} has {len(all_cores)} cores of size {len(all_cores[0])}"
@@ -35,15 +35,16 @@ from line_profiler import LineProfiler
 
 if __name__ == "__main__":
 
-    run()
-
-    # pr = cProfile.Profile()
-    # pr.enable()
     # run()
-    # pr.disable()
-    # from pstats import Stats
-    # stats = Stats(pr)
-    # stats.sort_stats("tottime").print_stats(10)
+
+    import cProfile
+    pr = cProfile.Profile()
+    pr.enable()
+    run()
+    pr.disable()
+    from pstats import Stats
+    stats = Stats(pr)
+    stats.sort_stats("tottime").print_stats(10)
 
     # lp = LineProfiler()
     # lp.add_function(mcgregor.recursion)
