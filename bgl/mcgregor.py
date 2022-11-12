@@ -114,8 +114,6 @@ class Graph:
         return self.lol_edges[vertex]
 
     def get_edges_as_vector(self, vertex):
-        # return edges as a boolean vetor
-        # return self.ve_matrix[vertex]
         return self.ve_bits[vertex]
 
 
@@ -139,9 +137,6 @@ def build_predicate_matrix(n_a, n_b, priority_idxs):
 
 def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
 
-    # print("layer size (unsorted):", max_tree_size(priority_idxs))
-    # print("layer size (sorted)  :", max_tree_size(sorted(priority_idxs, key=lambda x: len(x))))
-
     assert n_a <= n_b
 
     g_a = Graph(n_a, bonds_a)
@@ -161,9 +156,6 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
     recursion(
         g_a, g_b, map_a_to_b, map_b_to_a, 0, marcs, num_edges, mcs_result, priority_idxs, start_time, timeout, max_cores
     )
-
-    print("=====NODES VISITED", mcs_result.nodes_visited,"=========")
-
     all_cores = []
 
     for atom_map_1_to_2 in mcs_result.all_maps:

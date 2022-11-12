@@ -1,6 +1,5 @@
 from rdkit import Chem
 from bgl import atom_mapping
-from bgl import mcgregor
 
 mols = Chem.SDMolSupplier("datasets/hif2a.sdf", removeHs=False)
 mols = [m for m in mols]
@@ -30,8 +29,6 @@ def run():
             print(
                 f"{mol_a.GetProp('_Name')} -> {mol_b.GetProp('_Name')} has {len(all_cores)} cores of size {len(all_cores[0])}"
             )
-
-            # return
 
 
 from line_profiler import LineProfiler
