@@ -157,6 +157,8 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
     )
     all_cores = []
 
+    print(f"====[NODES VISITED {mcs_result.nodes_visited} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
+
     for atom_map_1_to_2 in mcs_result.all_maps:
         core = []
         for a, b in enumerate(atom_map_1_to_2):
@@ -243,7 +245,7 @@ def recursion(
     # also allow for explicitly not mapping layer atom
     new_marcs, new_edges = refine_marcs(
         g1, g2, layer, UNMAPPED, marcs, num_edges
-    )  # we can make this probably affect only a subslice!
+    )
     recursion(
         g1,
         g2,
