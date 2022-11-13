@@ -190,7 +190,6 @@ def reorder_atoms(mol):
     new_mol = Chem.RenumberAtoms(mol, perm.tolist())
     return new_mol, perm
 
-
 def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
     mol_a, perm = reorder_atoms(mol_a)  # UNINVERT
 

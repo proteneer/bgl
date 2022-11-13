@@ -55,8 +55,8 @@ def refine_marcs(g1, g2, new_v1, new_v2, marcs, num_edges):
 
 
 class MCSResult:
-    def __init__(self, maps_1_to_2):
-        self.all_maps = [maps_1_to_2]
+    def __init__(self):
+        self.all_maps = []
         self.num_edges = 0
         self.timed_out = False
         self.nodes_visited = 0
@@ -133,17 +133,12 @@ def build_predicate_matrix(n_a, n_b, priority_idxs):
             pmat[idx][jdx] = 1
     return pmat
 
-
 def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
 
     assert n_a <= n_b
 
     g_a = Graph(n_a, bonds_a)
     g_b = Graph(n_b, bonds_b)
-
-    map_a_to_b = [UNMAPPED] * n_a
-    map_b_to_a = [UNMAPPED] * n_b
-    mcs_result = MCSResult(map_a_to_b)
 
     predicate = build_predicate_matrix(n_a, n_b, priority_idxs)
     marcs = initialize_marcs_given_predicate(g_a, g_b, predicate)
@@ -152,12 +147,17 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
     marcs = convert_matrix_to_bits(marcs)
     start_time = time.time()
     num_edges = arcs_left(marcs)
+
+    map_a_to_b = [UNMAPPED] * n_a
+    map_b_to_a = [UNMAPPED] * n_b
+    mcs_result = MCSResult()
+
     recursion(
         g_a, g_b, map_a_to_b, map_b_to_a, 0, marcs, num_edges, mcs_result, priority_idxs, start_time, timeout, max_cores
     )
     all_cores = []
 
-    print(f"====[NODES VISITED {mcs_result.nodes_visited} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
+    print(f"====[NODES VISITED {mcs_result.nodes_visited} | NUM_EDGES {mcs_result.num_edges} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
 
     for atom_map_1_to_2 in mcs_result.all_maps:
         core = []
@@ -215,6 +215,7 @@ def recursion(
 
     # (ytz): note equality, since we want redundant edges, if we don't, then there is
     # another ~3x speed-up we can get if we *only* care about getting a single largest mcs
+
     if max_cores == 1:
         if num_edges <= mcs_result.num_edges:
             return
@@ -222,6 +223,7 @@ def recursion(
         if num_edges < mcs_result.num_edges:
             return
 
+    # prioritize mappings that maximize edge count
     for jdx in priority_idxs[layer]:
         if atom_map_2_to_1[jdx] == UNMAPPED:  # optimize later
             atom_map_add(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
@@ -242,7 +244,7 @@ def recursion(
             )
             atom_map_pop(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
 
-    # also allow for explicitly not mapping layer atom
+    # always allow for explicitly not mapping layer atom
     new_marcs, new_edges = refine_marcs(
         g1, g2, layer, UNMAPPED, marcs, num_edges
     )
