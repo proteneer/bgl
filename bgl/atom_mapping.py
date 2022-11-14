@@ -3,17 +3,45 @@ from rdkit import Chem
 from rdkit.Chem import Draw
 import networkx as nx
 from collections import defaultdict
-
-from scipy.spatial.distance import cdist
 from scipy.stats import special_ortho_group
 
 from bgl import mcgregor
+
+# Just like how one should never re-write an MD engine, one should never rewrite an MCS library.
+# Unless you have to. And now we have to. If you want to understand what this code is doing, it
+# is strongly recommended that the reader reads:
+
+# Backtrack search algorithms and the maximal common subgraph problem
+# James J McGregor,  January 1982, https://doi.org/10.1002/spe.4380120103
+
+# Theoretical Tricks
+# ------------------
+# The general motivation for all MCS libraries boils down to the problem of finding the largest core as soon as possible,
+# since the existence of the largest core helps the subtree filtering heuristic to remove subtrees as large as possible.
+# Notably, we:
+# - designed the method for free energy methods where the provided two molecules are aligned.
+# - only generate an atom-mapping between two mols, where as RDKit generates a common substructure between N mols
+# - operate on anonymous graphs (free of type information)  atom-atom compatibility via a predicates matrix
+#    denoting if atom i in mol_a is compatible with atom j in mol_b. We do not implement a bond-bond compatibility matrix.
+# - allow for the generation of common subgraphs, which is very useful for linker changes etc.
+# - re-order the vertices in graph based on the jordan center, which allows the traversal to 
+#    prioritize (but not require) connected components.
+# - actually prune and refine the marcs (edge-edge mapping matrix) to remove subtrees, unlike boost::graph::mcgregor
+# - provide a hard guarantee for timeout, i.e. completion of the algorithm implies global optimum(s) have been found
+# - when searching for atoms in mol_b to map, we prioritize based on distance
+
+# Engineering Tricks
+# ------------------
+# This is entirely written in python, which lends to its ease of use and modifiability. The following optimizations were
+# implemented (without changing the number of nodes visited):
+# - multiple representations of graph structures to improve efficiency
+# - refinement of marcs matrix is now done via bit operations, whereby boolean vectors are encoded as simple python ints
+# - we avoid overhead associated with copying class instance, using primitives where possible
 
 
 def score_2d(conf, norm=2):
     # get the goodness of a 2D depiction
     # low_score = good, high_score = bad
-
     score = 0
     for idx, (x0, y0, _) in enumerate(conf):
         for x1, y1, _ in conf[idx + 1 :]:
@@ -50,6 +78,14 @@ def get_romol_conf(mol):
     return guest_conf / 10  # from angstroms to nm
 
 
+def get_jordan_center(mol):
+    g = nx.Graph()
+    for bond in mol.GetBonds():
+        src, dst = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
+        g.add_edge(src, dst)
+    return nx.center(g)[0]
+
+
 def get_romol_bonds(mol):
     bonds = []
 
@@ -61,34 +97,17 @@ def get_romol_bonds(mol):
 
 
 def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
-
-    assert max_cores > 0
-
-    if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
-        all_cores, timed_out = _get_cores_impl(mol_b, mol_a, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores)
-        new_cores = []
-        for core in all_cores:
-            core = np.array([(x[1], x[0]) for x in core], dtype=core.dtype)
-            new_cores.append(core)
-        return new_cores, timed_out
-    else:
-        all_cores, timed_out = _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores)
-        return all_cores, timed_out
-
-
-def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
     """
-    Find a reasonable core between two molecules. This function takes in two cutoff parameters:
+    Finds set of cores between two molecules that maximizes the number of common edges.
 
-    If either atom i or atom j then the dist(i,j) < ring_cutoff, otherwise dist(i,j) < chain_cutoff
+    If either atom i or atom j is in a ring then the dist(i,j) < ring_cutoff, otherwise dist(i,j) < chain_cutoff
 
     Additional notes
     ----------------
     1) The returned cores are sorted in increasing order based on the rmsd of the alignment.
     2) The number of cores atoms may vary slightly, but the number of mapped edges are the same.
-
-    TBD: disallow SP3->SP2 hybridization changes.
-    TBD: check for chiral restraints/parity
+    3) If a time-out has occured, then we cannot guarantee correctness of the end-result. Usually this is fine, but
+       nevertheless we cannot guarantee this. 
 
     Parameters
     ----------
@@ -120,10 +139,59 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_
 
     Returns
     -------
-    np.array of shape (C,2)
-
+    2-tuple
+        Returns a list of all_cores, and a boolean flag indicating if a timeout was found. 
 
     """
+
+    assert max_cores > 0
+
+    # we require that mol_a.GetNumAtoms() <= mol_b.GetNumAtoms()
+    if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
+        all_cores, timed_out = _get_cores_impl(
+            mol_b, mol_a, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores
+        )
+        new_cores = []
+        for core in all_cores:
+            core = np.array([(x[1], x[0]) for x in core], dtype=core.dtype)
+            new_cores.append(core)
+        return new_cores, timed_out
+    else:
+        all_cores, timed_out = _get_cores_impl(
+            mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores
+        )
+        return all_cores, timed_out
+
+
+def bfs(g, atom):
+    depth = 0
+    cur_layer = [atom]
+    levels = {}
+    while len(levels) != g.GetNumAtoms():
+        next_layer = []
+        for layer_atom in cur_layer:
+            levels[layer_atom.GetIdx()] = depth
+            for nb_atom in layer_atom.GetNeighbors():
+                if nb_atom.GetIdx() not in levels:
+                    next_layer.append(nb_atom)
+        cur_layer = next_layer
+        depth += 1
+    levels_array = [-1] * g.GetNumAtoms()
+    for i, l in levels.items():
+        levels_array[i] = l
+    return levels_array
+
+
+def reorder_atoms(mol):
+    center_idx = get_jordan_center(mol)
+    center_atom = mol.GetAtomWithIdx(center_idx)
+    levels = bfs(mol, center_atom)
+    perm = np.argsort(levels)
+    new_mol = Chem.RenumberAtoms(mol, perm.tolist())
+    return new_mol, perm
+
+def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
+    mol_a, perm = reorder_atoms(mol_a)  # UNINVERT
 
     bonds_a = get_romol_bonds(mol_a)
     bonds_b = get_romol_bonds(mol_b)
@@ -158,11 +226,14 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_
     n_a = len(conf_a)
     n_b = len(conf_b)
 
-    import time
-
-    start_time = time.time()
     all_cores, timed_out = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores)
-    print("mcs elapsed_time", time.time()-start_time)
+
+    # undo the sort
+    for core in all_cores:
+        inv_core = []
+        for atom in core[:, 0]:
+            inv_core.append(perm[atom])
+        core[:, 0] = inv_core
 
     if connected_core:
         all_cores = remove_disconnected_components(mol_a, mol_b, all_cores)
