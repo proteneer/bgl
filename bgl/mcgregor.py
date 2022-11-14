@@ -157,7 +157,7 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
     )
     all_cores = []
 
-    print(f"====[NODES VISITED {mcs_result.nodes_visited} | NUM_EDGES {mcs_result.num_edges} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
+    print(f"====[NODES VISITED {mcs_result.nodes_visited} | CORE_SIZE {len(mcs_result.all_maps[0])} | NUM_EDGES {mcs_result.num_edges} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
 
     for atom_map_1_to_2 in mcs_result.all_maps:
         core = []
