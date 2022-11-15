@@ -228,13 +228,6 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_
 
     all_cores, timed_out = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores)
 
-    # undo the sort
-    for core in all_cores:
-        inv_core = []
-        for atom in core[:, 0]:
-            inv_core.append(perm[atom])
-        core[:, 0] = inv_core
-
     if connected_core:
         all_cores = remove_disconnected_components(mol_a, mol_b, all_cores)
 
@@ -250,6 +243,13 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_
     sorted_cores = []
     for p in np.argsort(dists):
         sorted_cores.append(all_cores[p])
+
+    # undo the sort
+    for core in sorted_cores:
+        inv_core = []
+        for atom in core[:, 0]:
+            inv_core.append(perm[atom])
+        core[:, 0] = inv_core
 
     return sorted_cores, timed_out
 
