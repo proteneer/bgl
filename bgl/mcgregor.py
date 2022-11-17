@@ -7,6 +7,7 @@ import time
 def arcs_left(marcs):
     return np.count_nonzero(marcs)  # slow
 
+
 UNMAPPED = -1
 
 
@@ -61,12 +62,14 @@ class MCSResult:
         self.timed_out = False
         self.nodes_visited = 0
 
+
 def convert_matrix_to_bits(arr):
     res = []
     for row in arr:
         seq = "".join([str(x) for x in row.tolist()])
         res.append(int(seq, 2))
     return res
+
 
 class Graph:
     def __init__(self, n_vertices, edges):
@@ -133,6 +136,7 @@ def build_predicate_matrix(n_a, n_b, priority_idxs):
             pmat[idx][jdx] = 1
     return pmat
 
+
 def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
 
     assert n_a <= n_b
@@ -157,7 +161,9 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
     )
     all_cores = []
 
-    print(f"====[NODES VISITED {mcs_result.nodes_visited} | CORE_SIZE {len(mcs_result.all_maps[0])} | NUM_EDGES {mcs_result.num_edges} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
+    print(
+        f"====[NODES VISITED {mcs_result.nodes_visited} | CORE_SIZE {len(mcs_result.all_maps[0])} | NUM_EDGES {mcs_result.num_edges} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]====="
+    )
 
     for atom_map_1_to_2 in mcs_result.all_maps:
         core = []
@@ -216,6 +222,9 @@ def recursion(
     # (ytz): note equality, since we want redundant edges, if we don't, then there is
     # another ~3x speed-up we can get if we *only* care about getting a single largest mcs
 
+    # if num_edges < 58:
+    # return
+
     if max_cores == 1:
         if num_edges <= mcs_result.num_edges:
             return
@@ -245,9 +254,7 @@ def recursion(
             atom_map_pop(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
 
     # always allow for explicitly not mapping layer atom
-    new_marcs, new_edges = refine_marcs(
-        g1, g2, layer, UNMAPPED, marcs, num_edges
-    )
+    new_marcs, new_edges = refine_marcs(g1, g2, layer, UNMAPPED, marcs, num_edges)
     recursion(
         g1,
         g2,

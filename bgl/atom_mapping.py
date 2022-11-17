@@ -24,7 +24,7 @@ from bgl import mcgregor
 # - operate on anonymous graphs (free of type information)  atom-atom compatibility via a predicates matrix
 #    denoting if atom i in mol_a is compatible with atom j in mol_b. We do not implement a bond-bond compatibility matrix.
 # - allow for the generation of common subgraphs, which is very useful for linker changes etc.
-# - re-order the vertices in graph based on the jordan center, which allows the traversal to 
+# - re-order the vertices in graph based on the jordan center, which allows the traversal to
 #    prioritize (but not require) connected components.
 # - actually prune and refine the marcs (edge-edge mapping matrix) to remove subtrees, unlike boost::graph::mcgregor
 # - provide a hard guarantee for timeout, i.e. completion of the algorithm implies global optimum(s) have been found
@@ -107,7 +107,7 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, 
     1) The returned cores are sorted in increasing order based on the rmsd of the alignment.
     2) The number of cores atoms may vary slightly, but the number of mapped edges are the same.
     3) If a time-out has occured, then we cannot guarantee correctness of the end-result. Usually this is fine, but
-       nevertheless we cannot guarantee this. 
+       nevertheless we cannot guarantee this.
 
     Parameters
     ----------
@@ -140,7 +140,7 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, 
     Returns
     -------
     2-tuple
-        Returns a list of all_cores, and a boolean flag indicating if a timeout was found. 
+        Returns a list of all_cores, and a boolean flag indicating if a timeout was found.
 
     """
 
@@ -183,20 +183,23 @@ def bfs(g, atom):
 
 
 def reorder_atoms(mol):
-    center_idx = get_jordan_center(mol)
-    center_atom = mol.GetAtomWithIdx(center_idx)
-    levels = bfs(mol, center_atom)
-    perm = np.argsort(levels)
+    # center_idx = get_jordan_center(mol)
+    # center_atom = mol.GetAtomWithIdx(center_idx)
+    # levels = bfs(mol, center_atom)
+    # perm = np.argsort(levels)
+    degrees = [len(a.GetNeighbors()) for a in mol.GetAtoms()]
+    perm = np.argsort(degrees)[::-1]
     new_mol = Chem.RenumberAtoms(mol, perm.tolist())
+
+    # for a in new_mol.GetAtoms():
+    #     print(len(a.GetNeighbors()))
+
+    # assert 0
+
     return new_mol, perm
 
-def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
-    mol_a, perm = reorder_atoms(mol_a)  # UNINVERT
 
-    bonds_a = get_romol_bonds(mol_a)
-    bonds_b = get_romol_bonds(mol_b)
-    conf_a = get_romol_conf(mol_a)
-    conf_b = get_romol_conf(mol_b)
+def compute_priority_idxs(mol_a, conf_a, mol_b, conf_b, ring_cutoff, chain_cutoff):
 
     priority_idxs = []  # ordered list of atoms to consider
 
@@ -223,8 +226,39 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_
 
         priority_idxs.append(final_idxs)
 
+    return priority_idxs
+
+
+def reorder_based_on_priority_idxs(mol, priority_idxs):
+
+    nbs = [len(x) for x in priority_idxs]
+    perm = np.argsort(nbs).tolist()[::-1]  # high branch to low branching
+    new_mol = Chem.RenumberAtoms(mol, perm)
+    return new_mol, perm
+
+
+def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
+
+    mol_a, perm = reorder_atoms(mol_a)  # UNINVERT
+    conf_a = get_romol_conf(mol_a)
+    conf_b = get_romol_conf(mol_b)
+    # priority_idxs_for_sort = compute_priority_idxs(mol_a, conf_a, mol_b, conf_b, ring_cutoff, chain_cutoff)
+
+    # mol_a, perm = reorder_based_on_priority_idxs(mol_a, priority_idxs_for_sort)
+    # conf_a = get_romol_conf(mol_a)
+
+    priority_idxs = compute_priority_idxs(mol_a, conf_a, mol_b, conf_b, ring_cutoff, chain_cutoff)
+
+    # for r in priority_idxs:
+    # print(r)
+
+    # assert 0
+
     n_a = len(conf_a)
     n_b = len(conf_b)
+
+    bonds_a = get_romol_bonds(mol_a)
+    bonds_b = get_romol_bonds(mol_b)
 
     all_cores, timed_out = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores)
 
