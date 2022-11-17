@@ -96,7 +96,7 @@ def get_romol_bonds(mol):
     return np.array(bonds, dtype=np.int32)
 
 
-def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
+def get_cores(mol_a, mol_b, initial_mapping, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
     """
     Finds set of cores between two molecules that maximizes the number of common edges.
 
@@ -116,6 +116,10 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, 
 
     mol_b: Chem.Mol
         Input molecule b. Must have a conformation.
+
+    initial_mapping: float
+        Specify an initial mapping. Atoms in the initial_map are exclusively paired
+        in the predicates matrix. 
 
     ring_cutoff: float
         The distance cutoff that ring atoms must satisfy.
@@ -149,7 +153,7 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, 
     # we require that mol_a.GetNumAtoms() <= mol_b.GetNumAtoms()
     if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
         all_cores, timed_out = _get_cores_impl(
-            mol_b, mol_a, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores
+            mol_b, mol_a, initial_mapping, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores
         )
         new_cores = []
         for core in all_cores:
@@ -158,7 +162,7 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, 
         return new_cores, timed_out
     else:
         all_cores, timed_out = _get_cores_impl(
-            mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores
+            mol_a, mol_b, initial_mapping, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores
         )
         return all_cores, timed_out
 
@@ -190,8 +194,43 @@ def reorder_atoms(mol):
     new_mol = Chem.RenumberAtoms(mol, perm.tolist())
     return new_mol, perm
 
-def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
+def get_initial_mapping_based_on_distance(conf_a, conf_b, threshold):
+    """
+    Compute an initial atom-mapping based on distance. A distance matrix is computed
+    between conf_a and conf_b, and a threshold filter is applied. row/col pairs that
+    are unique (i.e. exactly a single 1 present for a row, col pair) are collected
+    and set as the initial seed.
+    """
+    predicate = np.zeros((len(conf_a), len(conf_b)), dtype=np.int32)
+
+    for idx, a_xyz in enumerate(conf_a):
+        for jdx, b_xyz in enumerate(conf_b):
+            dij = np.linalg.norm(a_xyz - b_xyz)
+            predicate[idx][jdx] = dij < threshold
+
+    # find unique mappings:
+    unique_maps = {}
+    for idx, row in enumerate(predicate):
+        one_cols = np.argwhere(row)
+        if len(one_cols) == 1:
+            col_idx = one_cols[0][0]
+            one_rows = np.argwhere(predicate[:, col_idx])
+            if len(one_rows) == 1:
+                row_idx = one_rows[0][0]
+                assert row_idx == idx
+                unique_maps[row_idx] = col_idx
+
+    initial_core = [None]*len(conf_a)
+
+    for k,v in unique_maps.items():
+        initial_core[k] = v
+
+    return initial_core
+
+def _get_cores_impl(mol_a, mol_b, initial_mapping, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
     mol_a, perm = reorder_atoms(mol_a)  # UNINVERT
+    # reorder the initial mapping as well
+    initial_mapping = np.array(initial_mapping)[perm]
 
     bonds_a = get_romol_bonds(mol_a)
     bonds_b = get_romol_bonds(mol_b)
@@ -202,31 +241,35 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_
 
     for idx, a_xyz in enumerate(conf_a):
         atom_i = mol_a.GetAtomWithIdx(idx)
-        dijs = []
 
-        allowed_idxs = set()
-        for jdx, b_xyz in enumerate(conf_b):
-            atom_j = mol_b.GetAtomWithIdx(jdx)
-            dij = np.linalg.norm(a_xyz - b_xyz)
-            dijs.append(dij)
-            if atom_i.IsInRing() or atom_j.IsInRing():
-                if dij < ring_cutoff:
-                    allowed_idxs.add(jdx)
-            else:
-                if dij < chain_cutoff:
-                    allowed_idxs.add(jdx)
+        if idx in initial_mapping:
+            # set to an empty list, since we don't use this at all
+            priority_idxs.append([])
+        else:
+            dijs = []
+            allowed_idxs = set()
+            for jdx, b_xyz in enumerate(conf_b):
+                atom_j = mol_b.GetAtomWithIdx(jdx)
+                dij = np.linalg.norm(a_xyz - b_xyz)
+                dijs.append(dij)
+                if atom_i.IsInRing() or atom_j.IsInRing():
+                    if dij < ring_cutoff:
+                        allowed_idxs.add(jdx)
+                else:
+                    if dij < chain_cutoff:
+                        allowed_idxs.add(jdx)
 
-        final_idxs = []
-        for idx in np.argsort(dijs):
-            if idx in allowed_idxs:
-                final_idxs.append(idx)
+            final_idxs = []
+            for idx in np.argsort(dijs):
+                if idx in allowed_idxs:
+                    final_idxs.append(idx)
 
-        priority_idxs.append(final_idxs)
+            priority_idxs.append(final_idxs)
 
     n_a = len(conf_a)
     n_b = len(conf_b)
 
-    all_cores, timed_out = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores)
+    all_cores, timed_out = mcgregor.mcs(n_a, n_b, initial_mapping, priority_idxs, bonds_a, bonds_b, timeout, max_cores)
 
     if connected_core:
         all_cores = remove_disconnected_components(mol_a, mol_b, all_cores)

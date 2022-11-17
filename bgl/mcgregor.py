@@ -10,7 +10,7 @@ def arcs_left(marcs):
 UNMAPPED = -1
 
 
-def initialize_marcs_given_predicate(g1, g2, predicate):
+def initialize_marcs_given_predicate(g1, g2, predicate, initial_mapping):
     num_a_edges = g1.n_edges
     num_b_edges = g2.n_edges
     marcs = np.ones((num_a_edges, num_b_edges), dtype=np.int32)
@@ -23,12 +23,22 @@ def initialize_marcs_given_predicate(g1, g2, predicate):
             # 2) src_a can map to dst_b, and dst_a can map src_b
             # if either 1 or 2 is satisfied, we skip, otherwise
             # we can confidently reject the mapping
-            if predicate[src_a][src_b] and predicate[dst_a][dst_b]:
+            # print(initial_mapping[src_a], initial_mapping[dst_a], "bond_a", (src_a, dst_a), "bond_b", (src_b, dst_b))
+
+            if (predicate[src_a][src_b] or initial_mapping[src_a] == src_b) and (predicate[dst_a][dst_b] or initial_mapping[dst_a] == dst_b):
+                # print(e_a, e_b,"OK1")
                 continue
-            elif predicate[src_a][dst_b] and predicate[dst_a][src_b]:
+            elif (predicate[src_a][dst_b] or initial_mapping[src_a] == dst_b) and (predicate[dst_a][src_b] or initial_mapping[dst_a] == src_b):
+                # print(e_a, e_b, "OK2")
                 continue
             else:
+                # print("NOT OKAY", initial_mapping[src_a] == src_b)
                 marcs[e_a][e_b] = 0
+
+    # for r in marcs:
+        # print(r)
+
+    # assert 0
 
     return marcs
 
@@ -133,7 +143,7 @@ def build_predicate_matrix(n_a, n_b, priority_idxs):
             pmat[idx][jdx] = 1
     return pmat
 
-def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
+def mcs(n_a, n_b, initial_core, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
 
     assert n_a <= n_b
 
@@ -141,7 +151,7 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
     g_b = Graph(n_b, bonds_b)
 
     predicate = build_predicate_matrix(n_a, n_b, priority_idxs)
-    marcs = initialize_marcs_given_predicate(g_a, g_b, predicate)
+    marcs = initialize_marcs_given_predicate(g_a, g_b, predicate, initial_core)
 
     priority_idxs = tuple(tuple(x) for x in priority_idxs)
     marcs = convert_matrix_to_bits(marcs)
@@ -153,7 +163,7 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
     mcs_result = MCSResult()
 
     recursion(
-        g_a, g_b, map_a_to_b, map_b_to_a, 0, marcs, num_edges, mcs_result, priority_idxs, start_time, timeout, max_cores
+        g_a, g_b, initial_core, map_a_to_b, map_b_to_a, 0, marcs, num_edges, mcs_result, priority_idxs, start_time, timeout, max_cores
     )
     all_cores = []
 
@@ -183,6 +193,7 @@ def atom_map_pop(map_1_to_2, map_2_to_1, idx, jdx):
 def recursion(
     g1,
     g2,
+    initial_core,
     atom_map_1_to_2,
     atom_map_2_to_1,
     layer,
@@ -223,45 +234,73 @@ def recursion(
         if num_edges < mcs_result.num_edges:
             return
 
-    # prioritize mappings that maximize edge count
-    for jdx in priority_idxs[layer]:
-        if atom_map_2_to_1[jdx] == UNMAPPED:  # optimize later
-            atom_map_add(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
-            new_marcs, new_edges = refine_marcs(g1, g2, layer, jdx, marcs, num_edges)
-            recursion(
-                g1,
-                g2,
-                atom_map_1_to_2,
-                atom_map_2_to_1,
-                layer + 1,
-                new_marcs,
-                new_edges,
-                mcs_result,
-                priority_idxs,
-                start_time,
-                timeout,
-                max_cores,
-            )
-            atom_map_pop(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
 
-    # always allow for explicitly not mapping layer atom
-    new_marcs, new_edges = refine_marcs(
-        g1, g2, layer, UNMAPPED, marcs, num_edges
-    )
-    recursion(
-        g1,
-        g2,
-        atom_map_1_to_2,
-        atom_map_2_to_1,
-        layer + 1,
-        new_marcs,
-        new_edges,
-        mcs_result,
-        priority_idxs,
-        start_time,
-        timeout,
-        max_cores,
-    )
+    # note is not None, not UNMAPPPED
+    if initial_core[layer] is not None:
+        # print("IN INITIAL CORE", layer, initial_core[layer])
+        # assert 0
+        # if layer is in initial core then this map to whatever jdx is
+        jdx = initial_core[layer]
+        atom_map_add(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
+        new_marcs, new_edges = refine_marcs(g1, g2, layer, jdx, marcs, num_edges)
+        recursion(
+            g1,
+            g2,
+            initial_core,
+            atom_map_1_to_2,
+            atom_map_2_to_1,
+            layer + 1,
+            new_marcs,
+            new_edges,
+            mcs_result,
+            priority_idxs,
+            start_time,
+            timeout,
+            max_cores,
+        )
+        atom_map_pop(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
+    else:
+        # not in initial core, map to whatever is in priority list
+        for jdx in priority_idxs[layer]:
+            if atom_map_2_to_1[jdx] == UNMAPPED:  # optimize later
+                atom_map_add(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
+                new_marcs, new_edges = refine_marcs(g1, g2, layer, jdx, marcs, num_edges)
+                recursion(
+                    g1,
+                    g2,
+                    initial_core,
+                    atom_map_1_to_2,
+                    atom_map_2_to_1,
+                    layer + 1,
+                    new_marcs,
+                    new_edges,
+                    mcs_result,
+                    priority_idxs,
+                    start_time,
+                    timeout,
+                    max_cores,
+                )
+                atom_map_pop(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
+
+        # always allow for explicitly not mapping layer atom
+        new_marcs, new_edges = refine_marcs(
+            g1, g2, layer, UNMAPPED, marcs, num_edges
+        )
+        recursion(
+            g1,
+            g2,
+            initial_core,
+            atom_map_1_to_2,
+            atom_map_2_to_1,
+            layer + 1,
+            new_marcs,
+            new_edges,
+            mcs_result,
+            priority_idxs,
+            start_time,
+            timeout,
+            max_cores,
+        )
 
 
 def test_compute_marcs():
