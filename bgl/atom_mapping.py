@@ -244,12 +244,12 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connect
     n_a = len(conf_a)
     n_b = len(conf_b)
 
-    all_cores, timed_out = mcgregor.mcs(
+    all_cores, all_bond_cores, timed_out = mcgregor.mcs(
         n_a, n_b, priority_idxs, bonds_a, bonds_b, max_visits, max_cores, enforce_core_core
     )
-
     if connected_core:
-        all_cores = remove_disconnected_components(mol_a, mol_b, all_cores)
+        # Need to remove disconnected components before filtering the edges
+        all_cores = remove_disconnected_components(mol_a, mol_b, all_cores, all_bond_cores)
 
     dists = []
     # rmsd, note that len(core) is not the same, only the number of edges is
@@ -274,28 +274,31 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connect
     return sorted_cores, timed_out
 
 
-def remove_disconnected_components(mol_a, mol_b, cores):
-    """
-    Iterate over the cores and filter out the disconnected
-    mappings from each core. Return a list of cores that
-    have the largest remaining mapping.
-    """
+def remove_disconnected_components(mol_a, mol_b, cores, bond_cores):
     filtered_cores = []
-    for core in cores:
+    filtered_bond_cores = []
+    for core, bond_core in zip(cores, bond_cores):
 
         new_core = core
+        new_bond_core = bond_core
+        # Need to run it once through even if fully connected
+        # to remove stray atoms that are not included in the bond_core
+        first = True
         while True:
             core_a = list(new_core[:, 0])
             core_b = list(new_core[:, 1])
 
-            g_mol_a = mol_to_mapped_bonds_graph(mol_a, core_a)
-            g_mol_b = mol_to_mapped_bonds_graph(mol_b, core_b)
+            g_mol_a = nx.Graph()
+            g_mol_b = nx.Graph()
+            for bond_a, bond_b in new_bond_core.items():
+                g_mol_a.add_edge(*bond_a)
+                g_mol_b.add_edge(*bond_b)
 
             cc_a = list(nx.connected_components(g_mol_a))
             cc_b = list(nx.connected_components(g_mol_b))
 
             # stop when the core is fully connected
-            if len(cc_a) == 1 and len(cc_b) == 1:
+            if not first and len(cc_a) == 1 and len(cc_b) == 1:
                 break
 
             largest_cc_a = max(cc_a, key=len)
@@ -313,47 +316,29 @@ def remove_disconnected_components(mol_a, mol_b, cores):
                 for atom_idx in largest_cc_b:
                     core_idx = core_b.index(atom_idx)
                     new_core_idxs.append(core_idx)
-            new_core = new_core[new_core_idxs]
 
+            new_core = new_core[new_core_idxs]
+            new_bond_core = update_bond_core(new_core, new_bond_core)
+            first = False
         filtered_cores.append(new_core)
+        filtered_bond_cores.append(new_bond_core)
 
     filtered_cores_by_size = defaultdict(list)
     for core in filtered_cores:
         filtered_cores_by_size[len(core)].append(core)
 
     # Return the largest core(s)
-    return filtered_cores_by_size[max(filtered_cores_by_size.keys())]
+    max_core_size = max(filtered_cores_by_size.keys())
+    return filtered_cores_by_size[max_core_size]
 
-
-def mol_to_mapped_bonds_graph(mol, mapped_idxs) -> nx.Graph:
-    """
-    Convert a given mol to networkx graph, keeping only
-    the bonds that are mapped in the mapped_idxs.
-
-    Parameters
-    ----------
-    mol:
-        Molecule to convert.
-
-    mapped_idxs: List of int
-        The core atom idxs for the given molecule only.
-    """
-    g_mol = nx.Graph()
-    mapped_set = set(mapped_idxs)
-
-    # Include atoms for the single disconnected atom check
-    for atom in mol.GetAtoms():
-        atom_i = atom.GetIdx()
-        if atom_i in mapped_set:
-            g_mol.add_node(atom_i)
-
-    for bond in mol.GetBonds():
-        atom_i = bond.GetBeginAtomIdx()
-        atom_j = bond.GetEndAtomIdx()
-        if atom_i in mapped_set and atom_j in mapped_set:
-            g_mol.add_edge(atom_i, atom_j)
-
-    return g_mol
+def update_bond_core(core, bond_core):
+    new_bond_core = {}
+    core_a = list(core[:, 0])
+    core_b = list(core[:, 1])
+    for bond_a, bond_b in bond_core.items():
+        if bond_a[0] in core_a and bond_a[1] in core_a and bond_b[0] in core_b and bond_b[1] in core_b:
+            new_bond_core[bond_a] = bond_b
+    return new_bond_core
 
 
 def recenter_mol(mol):
