@@ -181,6 +181,11 @@ def bfs(g, atom):
         levels_array[i] = l
     return levels_array
 
+def reorder_atoms_by_degree(mol):
+    degrees = [len(a.GetNeighbors()) for a in mol.GetAtoms()]
+    perm = np.argsort(degrees)[::-1]
+    new_mol = Chem.RenumberAtoms(mol, perm.tolist())
+    return new_mol, perm
 
 def reorder_atoms(mol):
     center_idx = get_jordan_center(mol)
@@ -191,7 +196,8 @@ def reorder_atoms(mol):
     return new_mol, perm
 
 def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
-    mol_a, perm = reorder_atoms(mol_a)  # UNINVERT
+    # mol_a, perm = reorder_atoms(mol_a)  # UNINVERT
+    mol_a, perm = reorder_atoms_by_degree(mol_a)  # UNINVERT
 
     bonds_a = get_romol_bonds(mol_a)
     bonds_b = get_romol_bonds(mol_b)

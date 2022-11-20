@@ -24,7 +24,7 @@ def initialize_marcs_given_predicate(g1, g2, predicate):
         src_a, dst_a = g1.edges[e_a]
         for e_b in range(num_b_edges):
             src_b, dst_b = g2.edges[e_b]
-            # an edge is allowed in two cases:
+            # an edge mapping is allowed in two cases:
             # 1) src_a can map to src_b, and dst_a can map dst_b
             # 2) src_a can map to dst_b, and dst_a can map src_b
             # if either 1 or 2 is satisfied, we skip, otherwise
@@ -177,16 +177,26 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
     # marcs = convert_matrix_to_bits(marcs)
     start_time = time.time()
 
-    map_a_to_b = [UNMAPPED] * n_a
-    map_b_to_a = [UNMAPPED] * n_b
-    mcs_result = MCSResult()
+    counter = 10
+    max_threshold = arcs_left(marcs)
+    for idx in range(counter):
+        cur_threshold = max_threshold - idx
+        map_a_to_b = [UNMAPPED] * n_a
+        map_b_to_a = [UNMAPPED] * n_b
+        mcs_result = MCSResult()
+        recursion(
+            g_a, g_b, map_a_to_b, map_b_to_a, 0, marcs, mcs_result, priority_idxs, start_time, timeout, max_cores, cur_threshold
+        )
 
-    recursion(
-        g_a, g_b, map_a_to_b, map_b_to_a, 0, marcs, mcs_result, priority_idxs, start_time, timeout, max_cores
-    )
+        if len(mcs_result.all_maps) > 0:
+            print(f"==SUCCESS==[NODES VISITED {mcs_result.nodes_visited} | CORE_SIZE {len([x != UNMAPPED for x in mcs_result.all_maps[0]])} | NUM_EDGES {mcs_result.num_edges} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
+            break
+        else:
+            print(f"==FAILED==[NODES VISITED {mcs_result.nodes_visited} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
+
+    assert(len(mcs_result.all_maps) > 0)
+
     all_cores = []
-
-    print(f"====[NODES VISITED {mcs_result.nodes_visited} | CORE_SIZE {len([x != UNMAPPED for x in mcs_result.all_maps[0]])} | NUM_EDGES {mcs_result.num_edges} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
 
     for atom_map_1_to_2 in mcs_result.all_maps:
         core = []
@@ -221,10 +231,9 @@ def recursion(
     start_time,
     timeout,
     max_cores,
+    threshold,
 ):
     num_edges = arcs_left(marcs)
-    # print("layer", layer, "num_edges", num_edges)
-
     mcs_result.nodes_visited += 1
 
     if time.time() - start_time > timeout:
@@ -235,7 +244,6 @@ def recursion(
 
     # every atom has been mapped
     if layer == n_a:
-        # assert 0
         if mcs_result.num_edges < num_edges:
             mcs_result.all_maps = [copy.copy(atom_map_1_to_2)]
             mcs_result.num_edges = num_edges
@@ -246,13 +254,16 @@ def recursion(
 
     # (ytz): note equality, since we want redundant edges, if we don't, then there is
     # another ~3x speed-up we can get if we *only* care about getting a single largest mcs
-
     if max_cores == 1:
         if num_edges <= mcs_result.num_edges:
             return
     else:
         if num_edges < mcs_result.num_edges:
             return
+
+    if num_edges < threshold:
+        # print("leaving", num_edges, threshold)
+        return
 
     # prioritize mappings that maximize edge count
     for jdx in priority_idxs[layer]:
@@ -271,6 +282,7 @@ def recursion(
                 start_time,
                 timeout,
                 max_cores,
+                threshold,
             )
             atom_map_pop(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
 
@@ -288,6 +300,7 @@ def recursion(
         start_time,
         timeout,
         max_cores,
+        threshold,
     )
 
 
