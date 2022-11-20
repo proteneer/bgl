@@ -4,8 +4,14 @@ import copy
 import time
 
 # when computed on a leaf node this is equal to the number of edges mapped.
-def arcs_left(marcs):
-    return np.count_nonzero(marcs)  # slow
+# def arcs_left(marcs):
+    # return np.count_nonzero(marcs)  # slow
+
+def arcs_left(marcs): 
+    return np.sum(np.any(marcs, 1))
+
+# def arcs_left(marcs):
+    # return np.count_nonzero(marcs)  # slow
 
 UNMAPPED = -1
 
@@ -33,25 +39,46 @@ def initialize_marcs_given_predicate(g1, g2, predicate):
     return marcs
 
 
-def refine_marcs(g1, g2, new_v1, new_v2, marcs, num_edges):
+# def refine_marcs(g1, g2, new_v1, new_v2, marcs, num_edges):
+#     """
+#     return vertices that have changed
+#     """
+#     new_marcs = copy.copy(marcs)  # [m for m in marcs]
+#     removed_edges = 0
+
+#     # process rows
+#     for e1 in g1.get_edges(new_v1):
+#         orig = new_marcs[e1]
+#         if new_v2 != UNMAPPED:
+#             new_val = orig & g2.get_edges_as_vector(new_v2)
+#         else:
+#             new_val = 0
+
+#         new_marcs[e1] = new_val
+
+#         if orig > 0 and new_val == 0:
+#             removed_edges += 1
+
+#     return new_marcs, num_edges - removed_edges
+
+def refine_marcs(g1, g2, new_v1, new_v2, marcs):
     """
     return vertices that have changed
     """
     new_marcs = copy.copy(marcs)  # [m for m in marcs]
-    removed_edges = 0
+    # process rows
     for e1 in g1.get_edges(new_v1):
-        orig = new_marcs[e1]
         if new_v2 != UNMAPPED:
-            new_val = orig & g2.get_edges_as_vector(new_v2)
+            new_marcs[e1] &= g2.get_edges_as_vector(new_v2)
         else:
-            new_val = 0
+            new_marcs[e1] = np.zeros(g2.n_edges)
 
-        new_marcs[e1] = new_val
+    # process columns
+    if new_v2 != UNMAPPED:
+        for e2 in g2.get_edges(new_v2):
+            new_marcs[:, e2] &= g1.get_edges_as_vector(new_v1)
 
-        if orig > 0 and new_val == 0:
-            removed_edges += 1
-
-    return new_marcs, num_edges - removed_edges
+    return new_marcs
 
 
 class MCSResult:
@@ -113,6 +140,9 @@ class Graph:
         return self.lol_edges[vertex]
 
     def get_edges_as_vector(self, vertex):
+        return self.ve_matrix[vertex]
+
+    def get_edges_as_int(self, vertex):
         return self.ve_bits[vertex]
 
 
@@ -144,20 +174,19 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
     marcs = initialize_marcs_given_predicate(g_a, g_b, predicate)
 
     priority_idxs = tuple(tuple(x) for x in priority_idxs)
-    marcs = convert_matrix_to_bits(marcs)
+    # marcs = convert_matrix_to_bits(marcs)
     start_time = time.time()
-    num_edges = arcs_left(marcs)
 
     map_a_to_b = [UNMAPPED] * n_a
     map_b_to_a = [UNMAPPED] * n_b
     mcs_result = MCSResult()
 
     recursion(
-        g_a, g_b, map_a_to_b, map_b_to_a, 0, marcs, num_edges, mcs_result, priority_idxs, start_time, timeout, max_cores
+        g_a, g_b, map_a_to_b, map_b_to_a, 0, marcs, mcs_result, priority_idxs, start_time, timeout, max_cores
     )
     all_cores = []
 
-    print(f"====[NODES VISITED {mcs_result.nodes_visited} | CORE_SIZE {len(mcs_result.all_maps[0])} | NUM_EDGES {mcs_result.num_edges} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
+    print(f"====[NODES VISITED {mcs_result.nodes_visited} | CORE_SIZE {len([x != UNMAPPED for x in mcs_result.all_maps[0]])} | NUM_EDGES {mcs_result.num_edges} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
 
     for atom_map_1_to_2 in mcs_result.all_maps:
         core = []
@@ -187,13 +216,14 @@ def recursion(
     atom_map_2_to_1,
     layer,
     marcs,
-    num_edges,
     mcs_result,
     priority_idxs,
     start_time,
     timeout,
     max_cores,
 ):
+    num_edges = arcs_left(marcs)
+    # print("layer", layer, "num_edges", num_edges)
 
     mcs_result.nodes_visited += 1
 
@@ -205,6 +235,7 @@ def recursion(
 
     # every atom has been mapped
     if layer == n_a:
+        # assert 0
         if mcs_result.num_edges < num_edges:
             mcs_result.all_maps = [copy.copy(atom_map_1_to_2)]
             mcs_result.num_edges = num_edges
@@ -227,7 +258,7 @@ def recursion(
     for jdx in priority_idxs[layer]:
         if atom_map_2_to_1[jdx] == UNMAPPED:  # optimize later
             atom_map_add(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
-            new_marcs, new_edges = refine_marcs(g1, g2, layer, jdx, marcs, num_edges)
+            new_marcs = refine_marcs(g1, g2, layer, jdx, marcs)
             recursion(
                 g1,
                 g2,
@@ -235,7 +266,6 @@ def recursion(
                 atom_map_2_to_1,
                 layer + 1,
                 new_marcs,
-                new_edges,
                 mcs_result,
                 priority_idxs,
                 start_time,
@@ -245,9 +275,7 @@ def recursion(
             atom_map_pop(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
 
     # always allow for explicitly not mapping layer atom
-    new_marcs, new_edges = refine_marcs(
-        g1, g2, layer, UNMAPPED, marcs, num_edges
-    )
+    new_marcs = refine_marcs(g1, g2, layer, UNMAPPED, marcs)
     recursion(
         g1,
         g2,
@@ -255,7 +283,6 @@ def recursion(
         atom_map_2_to_1,
         layer + 1,
         new_marcs,
-        new_edges,
         mcs_result,
         priority_idxs,
         start_time,

@@ -26,9 +26,9 @@ def run():
                 ) as fh:
                     fh.write(res)
 
-            print(
-                f"{mol_a.GetProp('_Name')} -> {mol_b.GetProp('_Name')} has {len(all_cores)} cores of size {len(all_cores[0])}"
-            )
+            # print(
+                # f"{mol_a.GetProp('_Name')} -> {mol_b.GetProp('_Name')} has {len(all_cores)} cores of size {len(all_cores[0])}"
+            # )
 
 
 from line_profiler import LineProfiler
