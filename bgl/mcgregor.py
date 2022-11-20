@@ -189,7 +189,7 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
         )
 
         if len(mcs_result.all_maps) > 0:
-            print(f"==SUCCESS==[NODES VISITED {mcs_result.nodes_visited} | CORE_SIZE {len([x != UNMAPPED for x in mcs_result.all_maps[0]])} | NUM_EDGES {mcs_result.num_edges} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
+            print(f"==SUCCESS==[NODES VISITED {mcs_result.nodes_visited} | CORE_SIZE {len([x != UNMAPPED for x in mcs_result.all_maps[0]])} | NUM_CORES {len(mcs_result.all_maps)} | NUM_EDGES {mcs_result.num_edges} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
             break
         else:
             print(f"==FAILED==[NODES VISITED {mcs_result.nodes_visited} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
@@ -240,32 +240,21 @@ def recursion(
         mcs_result.timed_out = True
         return
 
-    n_a = g1.n_vertices
-
-    # every atom has been mapped
-    if layer == n_a:
-        if mcs_result.num_edges < num_edges:
-            mcs_result.all_maps = [copy.copy(atom_map_1_to_2)]
-            mcs_result.num_edges = num_edges
-        elif mcs_result.num_edges == num_edges and len(mcs_result.all_maps) < max_cores:
-            mcs_result.all_maps.append(copy.copy(atom_map_1_to_2))
-            pass
+    if len(mcs_result.all_maps) == max_cores:
         return
-
-    # (ytz): note equality, since we want redundant edges, if we don't, then there is
-    # another ~3x speed-up we can get if we *only* care about getting a single largest mcs
-    if max_cores == 1:
-        if num_edges <= mcs_result.num_edges:
-            return
-    else:
-        if num_edges < mcs_result.num_edges:
-            return
 
     if num_edges < threshold:
-        # print("leaving", num_edges, threshold)
         return
 
-    # prioritize mappings that maximize edge count
+    n_a = g1.n_vertices
+
+    # leaf-node, every atom has been mapped
+    if layer == n_a:
+        if num_edges == threshold:
+            mcs_result.all_maps.append(copy.copy(atom_map_1_to_2))
+            mcs_result.num_edges = num_edges
+        return
+
     for jdx in priority_idxs[layer]:
         if atom_map_2_to_1[jdx] == UNMAPPED:  # optimize later
             atom_map_add(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
