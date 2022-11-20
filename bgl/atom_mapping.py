@@ -32,14 +32,14 @@ from bgl import mcgregor
 # - runs the recursive iterations in iterations with thresholds, which avoids us getting stuck in a branch with a low
 #   max_num_edges. we've seen cases where we get stuck in an edge size of 45 but optimal edge mapping has 52 edges.
 # - termination guarantees correctness. otherwise an assertion is thrown since the distance (in terms of # of edges mapped)
-#   is unknown relative ot optimal.
+#   is unknown relative to optimal.
 
 # Engineering Tricks
 # ------------------
 # This is entirely written in python, which lends to its ease of use and modifiability. The following optimizations were
 # implemented (without changing the number of nodes visited):
 # - multiple representations of graph structures to improve efficiency
-# - refinement of marcs matrix is now done via boolean operations (we can probably improve this to bits later)
+# - refinement of marcs matrix is now done via bit operations, whereby boolean vectors are encoded as simple python ints
 # - we avoid overhead associated with copying class instance, using primitives where possible
 # - tbd: add a way to terminate by iteration count as opposed to time, to avoid dealing with CPU differences.
 
