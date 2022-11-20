@@ -26,7 +26,7 @@ def run():
                 ) as fh:
                     fh.write(res)
 
-            assert 0
+            # assert 0
 
             # print(
                 # f"{mol_a.GetProp('_Name')} -> {mol_b.GetProp('_Name')} has {len(all_cores)} cores of size {len(all_cores[0])}"

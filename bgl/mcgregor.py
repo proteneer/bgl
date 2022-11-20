@@ -7,11 +7,11 @@ import time
 # def arcs_left(marcs):
     # return np.count_nonzero(marcs)  # slow
 
-def arcs_left(marcs): 
-    return np.sum(np.any(marcs, 1))
+# def arcs_left(marcs): 
+    # return np.sum(np.any(marcs, 1))
 
-# def arcs_left(marcs):
-    # return np.count_nonzero(marcs)  # slow
+def arcs_left(marcs):
+    return np.count_nonzero(marcs)  # slow
 
 UNMAPPED = -1
 
@@ -19,7 +19,7 @@ UNMAPPED = -1
 def initialize_marcs_given_predicate(g1, g2, predicate):
     num_a_edges = g1.n_edges
     num_b_edges = g2.n_edges
-    marcs = np.ones((num_a_edges, num_b_edges), dtype=np.int32)
+    marcs = np.ones((num_a_edges, num_b_edges), dtype=np.uint8)
     for e_a in range(num_a_edges):
         src_a, dst_a = g1.edges[e_a]
         for e_b in range(num_b_edges):
@@ -39,44 +39,24 @@ def initialize_marcs_given_predicate(g1, g2, predicate):
     return marcs
 
 
-# def refine_marcs(g1, g2, new_v1, new_v2, marcs, num_edges):
-#     """
-#     return vertices that have changed
-#     """
-#     new_marcs = copy.copy(marcs)  # [m for m in marcs]
-#     removed_edges = 0
-
-#     # process rows
-#     for e1 in g1.get_edges(new_v1):
-#         orig = new_marcs[e1]
-#         if new_v2 != UNMAPPED:
-#             new_val = orig & g2.get_edges_as_vector(new_v2)
-#         else:
-#             new_val = 0
-
-#         new_marcs[e1] = new_val
-
-#         if orig > 0 and new_val == 0:
-#             removed_edges += 1
-
-#     return new_marcs, num_edges - removed_edges
-
 def refine_marcs(g1, g2, new_v1, new_v2, marcs):
     """
     return vertices that have changed
     """
-    new_marcs = copy.copy(marcs)  # [m for m in marcs]
-    # process rows
-    for e1 in g1.get_edges(new_v1):
-        if new_v2 != UNMAPPED:
-            new_marcs[e1] &= g2.get_edges_as_vector(new_v2)
-        else:
-            new_marcs[e1] = np.zeros(g2.n_edges)
-
-    # process columns
-    if new_v2 != UNMAPPED:
-        for e2 in g2.get_edges(new_v2):
-            new_marcs[:, e2] &= g1.get_edges_as_vector(new_v1)
+    new_marcs = copy.copy(marcs)
+    if new_v2 == UNMAPPED:
+        # zero out rows corresponding to the edges of new_v1
+        for e1 in g1.get_edges(new_v1):
+            new_marcs[e1] = 0
+    else:
+        # mask out every row in marcs
+        mask = g2.get_edges_as_int(new_v2)
+        antimask = ~mask
+        for e1_idx, is_v1_edge in enumerate(g1.get_edges_as_vector(new_v1)):
+            if is_v1_edge:
+                new_marcs[e1_idx] &= mask
+            else:
+                new_marcs[e1_idx] &= antimask
 
     return new_marcs
 
@@ -101,7 +81,7 @@ class Graph:
         self.n_edges = len(edges)
         self.edges = edges
 
-        cmat = np.zeros((n_vertices, n_vertices), dtype=np.int32)
+        cmat = np.zeros((n_vertices, n_vertices), dtype=np.uint8)
         for i, j in edges:
             cmat[i][j] = 1
             cmat[j][i] = 1
@@ -125,7 +105,7 @@ class Graph:
             self.lol_edges[src].append(edge_idx)
             self.lol_edges[dst].append(edge_idx)
 
-        self.ve_matrix = np.zeros((self.n_vertices, self.n_edges), dtype=np.int32)
+        self.ve_matrix = np.zeros((self.n_vertices, self.n_edges), dtype=np.uint8)
         for vertex_idx, edges in enumerate(self.lol_edges):
             for edge_idx in edges:
                 self.ve_matrix[vertex_idx][edge_idx] = 1
@@ -174,7 +154,7 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
     marcs = initialize_marcs_given_predicate(g_a, g_b, predicate)
 
     priority_idxs = tuple(tuple(x) for x in priority_idxs)
-    # marcs = convert_matrix_to_bits(marcs)
+    marcs = convert_matrix_to_bits(marcs)
     start_time = time.time()
 
     counter = 10
@@ -191,8 +171,8 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
         if len(mcs_result.all_maps) > 0:
             print(f"==SUCCESS==[NODES VISITED {mcs_result.nodes_visited} | CORE_SIZE {len([x != UNMAPPED for x in mcs_result.all_maps[0]])} | NUM_CORES {len(mcs_result.all_maps)} | NUM_EDGES {mcs_result.num_edges} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
             break
-        else:
-            print(f"==FAILED==[NODES VISITED {mcs_result.nodes_visited} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
+        # else:
+            # print(f"==FAILED==[NODES VISITED {mcs_result.nodes_visited} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
 
     assert(len(mcs_result.all_maps) > 0)
 
