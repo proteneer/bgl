@@ -24,19 +24,24 @@ from bgl import mcgregor
 # - operate on anonymous graphs (free of type information)  atom-atom compatibility via a predicates matrix
 #    denoting if atom i in mol_a is compatible with atom j in mol_b. We do not implement a bond-bond compatibility matrix.
 # - allow for the generation of common subgraphs, which is very useful for linker changes etc.
-# - re-order the vertices in graph based on the jordan center, which allows the traversal to 
-#    prioritize (but not require) connected components.
+# - re-order the vertices in graph based on the degree, this penalizes None mapping by the degree of the vertex
 # - actually prune and refine the marcs (edge-edge mapping matrix) to remove subtrees, unlike boost::graph::mcgregor
 # - provide a hard guarantee for timeout, i.e. completion of the algorithm implies global optimum(s) have been found
 # - when searching for atoms in mol_b to map, we prioritize based on distance
+# - improves/fixes refinement so that columns in the marcs matrix are properly assigned
+# - runs the recursive iterations in iterations with thresholds, which avoids us getting stuck in a branch with a low
+#   max_num_edges. we've seen cases where we get stuck in an edge size of 45 but optimal edge mapping has 52 edges.
+# - termination guarantees correctness. otherwise an assertion is thrown since the distance (in terms of # of edges mapped)
+#   is unknown relative ot optimal.
 
 # Engineering Tricks
 # ------------------
 # This is entirely written in python, which lends to its ease of use and modifiability. The following optimizations were
 # implemented (without changing the number of nodes visited):
 # - multiple representations of graph structures to improve efficiency
-# - refinement of marcs matrix is now done via bit operations, whereby boolean vectors are encoded as simple python ints
+# - refinement of marcs matrix is now done via boolean operations (we can probably improve this to bits later)
 # - we avoid overhead associated with copying class instance, using primitives where possible
+# - tbd: add a way to terminate by iteration count as opposed to time, to avoid dealing with CPU differences.
 
 
 def score_2d(conf, norm=2):
