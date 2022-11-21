@@ -101,7 +101,7 @@ def get_romol_bonds(mol):
     return np.array(bonds, dtype=np.int32)
 
 
-def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
+def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connected_core, max_cores):
     """
     Finds set of cores between two molecules that maximizes the number of common edges.
 
@@ -111,8 +111,7 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, 
     ----------------
     1) The returned cores are sorted in increasing order based on the rmsd of the alignment.
     2) The number of cores atoms may vary slightly, but the number of mapped edges are the same.
-    3) If a time-out has occured, then we cannot guarantee correctness of the end-result. Usually this is fine, but
-       nevertheless we cannot guarantee this. 
+    3) If a time-out has occured due to max_visits, then an exception is thrown.
 
     Parameters
     ----------
@@ -128,8 +127,8 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, 
     chain_cutoff: float
         The distance cutoff that non-ring atoms must satisfy.
 
-    timeout: int
-        Maximum number of seconds before returning.
+    max_visits: int
+        Maximum number of nodes we can visit for a given threshold.
 
     connected_core: bool
         Set to True to only keep the largest connected
@@ -154,7 +153,7 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, 
     # we require that mol_a.GetNumAtoms() <= mol_b.GetNumAtoms()
     if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
         all_cores, timed_out = _get_cores_impl(
-            mol_b, mol_a, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores
+            mol_b, mol_a, ring_cutoff, chain_cutoff, max_visits, connected_core, max_cores
         )
         new_cores = []
         for core in all_cores:
@@ -163,7 +162,7 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, 
         return new_cores, timed_out
     else:
         all_cores, timed_out = _get_cores_impl(
-            mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores
+            mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connected_core, max_cores
         )
         return all_cores, timed_out
 
@@ -200,7 +199,7 @@ def reorder_atoms_by_jordan_center(mol):
     new_mol = Chem.RenumberAtoms(mol, perm.tolist())
     return new_mol, perm
 
-def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
+def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connected_core, max_cores):
     # mol_a, perm = reorder_atoms_by_jordan_center(mol_a)  # this is disabled because its not too great
     mol_a, perm = reorder_atoms_by_degree(mol_a)  # UNINVERT
 
@@ -211,6 +210,7 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_
 
     priority_idxs = []  # ordered list of atoms to consider
 
+    # setup co-domain for each atom in mol_a
     for idx, a_xyz in enumerate(conf_a):
         atom_i = mol_a.GetAtomWithIdx(idx)
         dijs = []
@@ -237,7 +237,7 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_
     n_a = len(conf_a)
     n_b = len(conf_b)
 
-    all_cores, timed_out = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores)
+    all_cores, timed_out = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, max_visits, max_cores)
 
     if connected_core:
         all_cores = remove_disconnected_components(mol_a, mol_b, all_cores)

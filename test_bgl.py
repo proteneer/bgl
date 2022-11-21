@@ -16,16 +16,22 @@ def run():
         for mol_b in mols[idx + 1:]:
 
             all_cores, _ = atom_mapping.get_cores(
-                mol_a, mol_b, ring_cutoff=0.1, chain_cutoff=0.2, timeout=60, connected_core=False, max_cores=1000000
+                mol_a,
+                mol_b,
+                ring_cutoff=0.1,
+                chain_cutoff=0.2,
+                max_visits=1e7, # 10 million max nodes to visit
+                connected_core=False,
+                max_cores=1000000
             )
             # note that this is probably the bottleneck for hif2a
-            for core_idx, core in enumerate(all_cores):
-                res = atom_mapping.plot_atom_mapping_grid(mol_a, mol_b, core, num_rotations=5)
+            # for core_idx, core in enumerate(all_cores):
+            #     res = atom_mapping.plot_atom_mapping_grid(mol_a, mol_b, core, num_rotations=5)
 
-                with open(
-                    f"atom_mapping_{get_mol_name(mol_a)}_to_{get_mol_name(mol_b)}_core_{core_idx}.svg", "w"
-                ) as fh:
-                    fh.write(res)
+            #     with open(
+            #         f"atom_mapping_{get_mol_name(mol_a)}_to_{get_mol_name(mol_b)}_core_{core_idx}.svg", "w"
+            #     ) as fh:
+            #         fh.write(res)
 
 
             print(

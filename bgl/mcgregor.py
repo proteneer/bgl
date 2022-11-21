@@ -139,7 +139,10 @@ def build_predicate_matrix(n_a, n_b, priority_idxs):
             pmat[idx][jdx] = 1
     return pmat
 
-def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
+class MaxVisitsError(Exception):
+    pass
+
+def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, max_visits, max_cores):
 
     assert n_a <= n_b
 
@@ -161,10 +164,11 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
         map_b_to_a = [UNMAPPED] * n_b
         mcs_result = MCSResult()
         recursion(
-            g_a, g_b, map_a_to_b, map_b_to_a, 0, marcs, mcs_result, priority_idxs, start_time, timeout, max_cores, cur_threshold
+            g_a, g_b, map_a_to_b, map_b_to_a, 0, marcs, mcs_result, priority_idxs, start_time, max_visits, max_cores, cur_threshold
         )
 
-        assert mcs_result.timed_out is False
+        if mcs_result.timed_out:
+            raise MaxVisitsError()
 
         if len(mcs_result.all_maps) > 0:
             # don't remove this comment and the one below, useful for debugging!
@@ -208,19 +212,20 @@ def recursion(
     mcs_result,
     priority_idxs,
     start_time,
-    timeout,
+    max_visits,
     max_cores,
     threshold,
 ):
-    num_edges = arcs_left(marcs)
     mcs_result.nodes_visited += 1
 
-    if time.time() - start_time > timeout:
+    if mcs_result.nodes_visited > max_visits:
         mcs_result.timed_out = True
         return
 
     if len(mcs_result.all_maps) == max_cores:
         return
+
+    num_edges = arcs_left(marcs)
 
     if num_edges < threshold:
         return
@@ -248,7 +253,7 @@ def recursion(
                 mcs_result,
                 priority_idxs,
                 start_time,
-                timeout,
+                max_visits,
                 max_cores,
                 threshold,
             )
@@ -266,7 +271,7 @@ def recursion(
         mcs_result,
         priority_idxs,
         start_time,
-        timeout,
+        max_visits,
         max_cores,
         threshold,
     )
