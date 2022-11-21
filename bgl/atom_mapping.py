@@ -201,8 +201,8 @@ def reorder_atoms(mol):
     return new_mol, perm
 
 def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
-    # mol_a, perm = reorder_atoms(mol_a)  # UNINVERT
-    mol_a, perm = reorder_atoms_by_degree(mol_a)  # UNINVERT
+    mol_a, perm = reorder_atoms(mol_a)  # UNINVERT
+    # mol_a, perm = reorder_atoms_by_degree(mol_a)  # UNINVERT
 
     bonds_a = get_romol_bonds(mol_a)
     bonds_b = get_romol_bonds(mol_b)
