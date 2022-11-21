@@ -3,18 +3,14 @@ import numpy as np
 import copy
 import time
 
-# when computed on a leaf node this is equal to the number of edges mapped.
-# def arcs_left(marcs):
-    # return np.count_nonzero(marcs)  # slow
-
-# def arcs_left(marcs): 
-    # return np.sum(np.any(marcs, 1))
-
 def arcs_left(marcs):
-    return np.count_nonzero(marcs)  # slow
+    sum = 0
+    for r in marcs:
+        sum += r > 0
+    return sum
+    # the above python loop is faster than np.count_nonzero(marcs)
 
 UNMAPPED = -1
-
 
 def initialize_marcs_given_predicate(g1, g2, predicate):
     num_a_edges = g1.n_edges
@@ -157,9 +153,9 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
     marcs = convert_matrix_to_bits(marcs)
     start_time = time.time()
 
-    counter = 10
+    # run in reverse by guessing max # of edges to avoid getting stuck in minima.
     max_threshold = arcs_left(marcs)
-    for idx in range(counter):
+    for idx in range(max_threshold):
         cur_threshold = max_threshold - idx
         map_a_to_b = [UNMAPPED] * n_a
         map_b_to_a = [UNMAPPED] * n_b
@@ -169,7 +165,8 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
         )
 
         if len(mcs_result.all_maps) > 0:
-            print(f"==SUCCESS==[NODES VISITED {mcs_result.nodes_visited} | CORE_SIZE {len([x != UNMAPPED for x in mcs_result.all_maps[0]])} | NUM_CORES {len(mcs_result.all_maps)} | NUM_EDGES {mcs_result.num_edges} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
+            # don't remove this comment and the one below, useful for debugging!
+            # print(f"==SUCCESS==[NODES VISITED {mcs_result.nodes_visited} | CORE_SIZE {len([x != UNMAPPED for x in mcs_result.all_maps[0]])} | NUM_CORES {len(mcs_result.all_maps)} | NUM_EDGES {mcs_result.num_edges} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
             break
         # else:
             # print(f"==FAILED==[NODES VISITED {mcs_result.nodes_visited} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
