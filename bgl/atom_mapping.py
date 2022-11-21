@@ -16,19 +16,23 @@ from bgl import mcgregor
 
 # Theoretical Tricks
 # ------------------
-# The general motivation for all MCS libraries boils down to the problem of finding the largest core as soon as possible,
-# since the existence of the largest core helps the subtree filtering heuristic to remove subtrees as large as possible.
-# Notably, we:
+# Historically, MCS methods have relied on finding the largest core as soon as possible. However, this can pose difficulties
+# since we may get stuck in a local region of poor quality (that end up having far smaller than the optimal). Our algorithm
+# has several clever tricks up its sleeve in that we:
+
 # - designed the method for free energy methods where the provided two molecules are aligned.
-# - only generate an atom-mapping between two mols, where as RDKit generates a common substructure between N mols
-# - operate on anonymous graphs (free of type information)  atom-atom compatibility via a predicates matrix
-#    denoting if atom i in mol_a is compatible with atom j in mol_b. We do not implement a bond-bond compatibility matrix.
-# - allow for the generation of common subgraphs, which is very useful for linker changes etc.
-# - re-order the vertices in graph based on the jordan center, which allows the traversal to 
-#    prioritize (but not require) connected components.
-# - actually prune and refine the marcs (edge-edge mapping matrix) to remove subtrees, unlike boost::graph::mcgregor
+# - actually prune and refine the row/cols of marcs (edge-edge mapping matrix) to remove subtrees, unlike boost::graph::mcgregor
+# - only generate an atom-mapping between two mols, whereas RDKit generates a common substructure between N mols
+# - operate on anonymous graphs whose atom-atom compatibility depends on a predicates matrix, such that a 1 is when
+#   if atom i in mol_a is compatible with atom j in mol_b, and 0 otherwise. We do not implement a bond-bond compatibility matrix.
+# - allow for the generation of disconnected atom-mappings, which is very useful for linker changes etc.
+# - re-order the vertices in graph based on the degree, this penalizes None mapping by the degree of the vertex
 # - provide a hard guarantee for timeout, i.e. completion of the algorithm implies global optimum(s) have been found
 # - when searching for atoms in mol_b to map, we prioritize based on distance
+# - runs the recursive algorithm in iterations with thresholds, which avoids us getting stuck in a branch with a low
+#   max_num_edges. we've seen cases where we get stuck in an edge size of 45 but optimal edge mapping has 52 edges.
+# - termination guarantees correctness. otherwise an assertion is thrown since the distance (in terms of # of edges mapped)
+#   is unknown relative to optimal.
 
 # Engineering Tricks
 # ------------------
@@ -37,6 +41,7 @@ from bgl import mcgregor
 # - multiple representations of graph structures to improve efficiency
 # - refinement of marcs matrix is now done via bit operations, whereby boolean vectors are encoded as simple python ints
 # - we avoid overhead associated with copying class instance, using primitives where possible
+# - tbd: add a way to terminate by iteration count as opposed to time, to avoid dealing with hardware differences.
 
 
 def score_2d(conf, norm=2):
@@ -96,7 +101,7 @@ def get_romol_bonds(mol):
     return np.array(bonds, dtype=np.int32)
 
 
-def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
+def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connected_core, max_cores):
     """
     Finds set of cores between two molecules that maximizes the number of common edges.
 
@@ -106,8 +111,7 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, 
     ----------------
     1) The returned cores are sorted in increasing order based on the rmsd of the alignment.
     2) The number of cores atoms may vary slightly, but the number of mapped edges are the same.
-    3) If a time-out has occured, then we cannot guarantee correctness of the end-result. Usually this is fine, but
-       nevertheless we cannot guarantee this. 
+    3) If a time-out has occured due to max_visits, then an exception is thrown.
 
     Parameters
     ----------
@@ -123,8 +127,8 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, 
     chain_cutoff: float
         The distance cutoff that non-ring atoms must satisfy.
 
-    timeout: int
-        Maximum number of seconds before returning.
+    max_visits: int
+        Maximum number of nodes we can visit for a given threshold.
 
     connected_core: bool
         Set to True to only keep the largest connected
@@ -149,7 +153,7 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, 
     # we require that mol_a.GetNumAtoms() <= mol_b.GetNumAtoms()
     if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
         all_cores, timed_out = _get_cores_impl(
-            mol_b, mol_a, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores
+            mol_b, mol_a, ring_cutoff, chain_cutoff, max_visits, connected_core, max_cores
         )
         new_cores = []
         for core in all_cores:
@@ -158,7 +162,7 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, 
         return new_cores, timed_out
     else:
         all_cores, timed_out = _get_cores_impl(
-            mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores
+            mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connected_core, max_cores
         )
         return all_cores, timed_out
 
@@ -181,8 +185,13 @@ def bfs(g, atom):
         levels_array[i] = l
     return levels_array
 
+def reorder_atoms_by_degree(mol):
+    degrees = [len(a.GetNeighbors()) for a in mol.GetAtoms()]
+    perm = np.argsort(degrees)[::-1]
+    new_mol = Chem.RenumberAtoms(mol, perm.tolist())
+    return new_mol, perm
 
-def reorder_atoms(mol):
+def reorder_atoms_by_jordan_center(mol):
     center_idx = get_jordan_center(mol)
     center_atom = mol.GetAtomWithIdx(center_idx)
     levels = bfs(mol, center_atom)
@@ -190,8 +199,9 @@ def reorder_atoms(mol):
     new_mol = Chem.RenumberAtoms(mol, perm.tolist())
     return new_mol, perm
 
-def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
-    mol_a, perm = reorder_atoms(mol_a)  # UNINVERT
+def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connected_core, max_cores):
+    # mol_a, perm = reorder_atoms_by_jordan_center(mol_a)  # this is disabled because its not too great
+    mol_a, perm = reorder_atoms_by_degree(mol_a)  # UNINVERT
 
     bonds_a = get_romol_bonds(mol_a)
     bonds_b = get_romol_bonds(mol_b)
@@ -200,6 +210,7 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_
 
     priority_idxs = []  # ordered list of atoms to consider
 
+    # setup co-domain for each atom in mol_a
     for idx, a_xyz in enumerate(conf_a):
         atom_i = mol_a.GetAtomWithIdx(idx)
         dijs = []
@@ -226,7 +237,7 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_
     n_a = len(conf_a)
     n_b = len(conf_b)
 
-    all_cores, timed_out = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores)
+    all_cores, timed_out = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, max_visits, max_cores)
 
     if connected_core:
         all_cores = remove_disconnected_components(mol_a, mol_b, all_cores)
