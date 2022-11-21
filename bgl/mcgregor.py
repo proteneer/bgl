@@ -121,6 +121,7 @@ def refine_marcs(g1, g2, new_v1, new_v2, marcs):
 class MCSResult:
     def __init__(self):
         self.all_maps = []
+        self.all_marcs = []
         self.num_edges = 0
         self.timed_out = False
         self.nodes_visited = 0
@@ -270,7 +271,22 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, max_visits, max_cores, enforc
         core = np.array(sorted(core))
         all_cores.append(core)
 
-    return all_cores, mcs_result.timed_out
+    all_bond_cores = []
+    for marcs in mcs_result.all_marcs:
+        num_a_edges = g_a.n_edges
+        num_b_edges = g_b.n_edges
+        bond_core = {}
+        for e_a in range(num_a_edges):
+            src_a, dst_a = g_a.edges[e_a]
+            for e_b in range(num_b_edges):
+                src_b, dst_b = g_b.edges[e_b]
+                if marcs[e_a][e_b]:
+                    assert (src_a, dst_a) not in bond_core
+                    assert (dst_a, src_a) not in bond_core
+                    bond_core[(src_a, dst_a)] = (src_b, dst_b)
+        all_bond_cores.append(bond_core)
+
+    return all_cores, all_bond_cores, mcs_result.timed_out
 
 
 def atom_map_add(map_1_to_2, map_2_to_1, idx, jdx):
@@ -330,6 +346,7 @@ def recursion(
     if layer == n_a:
         if num_edges == threshold:
             mcs_result.all_maps.append(copy.copy(atom_map_1_to_2))
+            mcs_result.all_marcs.append(copy.copy(marcs))
             mcs_result.num_edges = num_edges
         return
 
