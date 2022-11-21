@@ -164,6 +164,8 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, timeout, max_cores):
             g_a, g_b, map_a_to_b, map_b_to_a, 0, marcs, mcs_result, priority_idxs, start_time, timeout, max_cores, cur_threshold
         )
 
+        assert mcs_result.timed_out is False
+
         if len(mcs_result.all_maps) > 0:
             # don't remove this comment and the one below, useful for debugging!
             # print(f"==SUCCESS==[NODES VISITED {mcs_result.nodes_visited} | CORE_SIZE {len([x != UNMAPPED for x in mcs_result.all_maps[0]])} | NUM_CORES {len(mcs_result.all_maps)} | NUM_EDGES {mcs_result.num_edges} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")

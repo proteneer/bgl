@@ -16,20 +16,20 @@ from bgl import mcgregor
 
 # Theoretical Tricks
 # ------------------
-# The general motivation for all MCS libraries boils down to the problem of finding the largest core as soon as possible,
-# since the existence of the largest core helps the subtree filtering heuristic to remove subtrees as large as possible.
-# Notably, we:
+# Historically, MCS methods have relied on finding the largest core as soon as possible. However, this can pose difficulties
+# since we may get stuck in a local region of poor quality (that end up having far smaller than the optimal). Our algorithm
+# has several clever tricks up its sleeve in that we:
+
 # - designed the method for free energy methods where the provided two molecules are aligned.
-# - only generate an atom-mapping between two mols, where as RDKit generates a common substructure between N mols
-# - operate on anonymous graphs (free of type information)  atom-atom compatibility via a predicates matrix
-#    denoting if atom i in mol_a is compatible with atom j in mol_b. We do not implement a bond-bond compatibility matrix.
-# - allow for the generation of common subgraphs, which is very useful for linker changes etc.
+# - actually prune and refine the row/cols of marcs (edge-edge mapping matrix) to remove subtrees, unlike boost::graph::mcgregor
+# - only generate an atom-mapping between two mols, whereas RDKit generates a common substructure between N mols
+# - operate on anonymous graphs whose atom-atom compatibility depends on a predicates matrix, such that a 1 is when
+#   if atom i in mol_a is compatible with atom j in mol_b, and 0 otherwise. We do not implement a bond-bond compatibility matrix.
+# - allow for the generation of disconnected atom-mappings, which is very useful for linker changes etc.
 # - re-order the vertices in graph based on the degree, this penalizes None mapping by the degree of the vertex
-# - actually prune and refine the marcs (edge-edge mapping matrix) to remove subtrees, unlike boost::graph::mcgregor
 # - provide a hard guarantee for timeout, i.e. completion of the algorithm implies global optimum(s) have been found
 # - when searching for atoms in mol_b to map, we prioritize based on distance
-# - improves/fixes refinement so that columns in the marcs matrix are properly assigned
-# - runs the recursive iterations in iterations with thresholds, which avoids us getting stuck in a branch with a low
+# - runs the recursive algorithm in iterations with thresholds, which avoids us getting stuck in a branch with a low
 #   max_num_edges. we've seen cases where we get stuck in an edge size of 45 but optimal edge mapping has 52 edges.
 # - termination guarantees correctness. otherwise an assertion is thrown since the distance (in terms of # of edges mapped)
 #   is unknown relative to optimal.
@@ -41,7 +41,7 @@ from bgl import mcgregor
 # - multiple representations of graph structures to improve efficiency
 # - refinement of marcs matrix is now done via bit operations, whereby boolean vectors are encoded as simple python ints
 # - we avoid overhead associated with copying class instance, using primitives where possible
-# - tbd: add a way to terminate by iteration count as opposed to time, to avoid dealing with CPU differences.
+# - tbd: add a way to terminate by iteration count as opposed to time, to avoid dealing with hardware differences.
 
 
 def score_2d(conf, norm=2):
@@ -192,7 +192,7 @@ def reorder_atoms_by_degree(mol):
     new_mol = Chem.RenumberAtoms(mol, perm.tolist())
     return new_mol, perm
 
-def reorder_atoms(mol):
+def reorder_atoms_by_jordan_center(mol):
     center_idx = get_jordan_center(mol)
     center_atom = mol.GetAtomWithIdx(center_idx)
     levels = bfs(mol, center_atom)
@@ -201,8 +201,8 @@ def reorder_atoms(mol):
     return new_mol, perm
 
 def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, timeout, connected_core, max_cores):
-    mol_a, perm = reorder_atoms(mol_a)  # UNINVERT
-    # mol_a, perm = reorder_atoms_by_degree(mol_a)  # UNINVERT
+    # mol_a, perm = reorder_atoms_by_jordan_center(mol_a)  # this is disabled because its not too great
+    mol_a, perm = reorder_atoms_by_degree(mol_a)  # UNINVERT
 
     bonds_a = get_romol_bonds(mol_a)
     bonds_b = get_romol_bonds(mol_b)
