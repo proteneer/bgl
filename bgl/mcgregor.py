@@ -68,6 +68,30 @@ def initialize_marcs_given_predicate(g1, g2, predicate):
 #     return new_marcs
 
 
+def _verify_core_impl(g1, g2, new_v1, map_1_to_2):
+    for e1 in g1.get_edges(new_v1):
+        src, dst = g1.edges[e1]
+        # both ends are mapped
+        src_2, dst_2 = map_1_to_2[src], map_1_to_2[dst]
+        if src_2 != UNMAPPED and dst_2 != UNMAPPED:
+            # print(src_2, dst_2)
+            # see if this edge is present in g2
+            if g2.cmat[src_2][dst_2] == 0:
+                return False
+            # else:
+            # print("BADDDD")
+            # assert 0
+    return True
+
+
+def verify_core_is_connected(g1, g2, new_v1, new_v2, map_1_to_2, map_2_to_1):
+    # incremental checks
+    if _verify_core_impl(g1, g2, new_v1, map_1_to_2):
+        return _verify_core_impl(g2, g1, new_v2, map_2_to_1)
+    else:
+        return False
+
+
 def refine_marcs(g1, g2, new_v1, new_v2, marcs):
     """
     return vertices that have changed
@@ -183,7 +207,7 @@ class MaxVisitsError(Exception):
     pass
 
 
-def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, max_visits, max_cores):
+def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, max_visits, max_cores, enforce_core_core):
 
     assert n_a <= n_b
 
@@ -217,6 +241,7 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, max_visits, max_cores):
             max_visits,
             max_cores,
             cur_threshold,
+            enforce_core_core,
         )
 
         if mcs_result.timed_out:
@@ -284,6 +309,7 @@ def recursion(
     max_visits,
     max_cores,
     threshold,
+    enforce_core_core,
 ):
 
     if mcs_result.nodes_visited > max_visits:
@@ -309,25 +335,31 @@ def recursion(
 
     for jdx in priority_idxs[layer]:
         if atom_map_2_to_1[jdx] == UNMAPPED:  # optimize later
+
             atom_map_add(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
-            new_marcs = refine_marcs(g1, g2, layer, jdx, marcs)
-            recursion(
-                g1,
-                g2,
-                atom_map_1_to_2,
-                atom_map_2_to_1,
-                layer + 1,
-                new_marcs,
-                mcs_result,
-                priority_idxs,
-                start_time,
-                max_visits,
-                max_cores,
-                threshold,
-            )
+            if enforce_core_core and not verify_core_is_connected(g1, g2, layer, jdx, atom_map_1_to_2, atom_map_2_to_1):
+                pass
+            else:
+                new_marcs = refine_marcs(g1, g2, layer, jdx, marcs)
+                recursion(
+                    g1,
+                    g2,
+                    atom_map_1_to_2,
+                    atom_map_2_to_1,
+                    layer + 1,
+                    new_marcs,
+                    mcs_result,
+                    priority_idxs,
+                    start_time,
+                    max_visits,
+                    max_cores,
+                    threshold,
+                    enforce_core_core,
+                )
             atom_map_pop(atom_map_1_to_2, atom_map_2_to_1, layer, jdx)
 
     # always allow for explicitly not mapping layer atom
+    # nit: don't need to check for connected core if mapping to None
     new_marcs = refine_marcs(g1, g2, layer, UNMAPPED, marcs)
     recursion(
         g1,
@@ -342,6 +374,7 @@ def recursion(
         max_visits,
         max_cores,
         threshold,
+        enforce_core_core,
     )
 
 
