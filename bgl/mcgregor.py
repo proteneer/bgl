@@ -4,11 +4,18 @@ import copy
 import time
 
 
+# def arcs_left(marcs):
+#     sum = 0
+#     for r in marcs:
+#         sum += r > 0
+#     return sum
+
+
 def arcs_left(marcs):
-    sum = 0
-    for r in marcs:
-        sum += r > 0
-    return sum
+    num_row_edges = np.sum(np.any(marcs, 1))
+    num_col_edges = np.sum(np.any(marcs, 0))
+    return min(num_row_edges, num_col_edges)
+
     # the above python loop is faster than np.count_nonzero(marcs)
 
 
@@ -38,19 +45,44 @@ def initialize_marcs_given_predicate(g1, g2, predicate):
     return marcs
 
 
+# def refine_marcs(g1, g2, new_v1, new_v2, marcs):
+#     """
+#     return vertices that have changed
+#     """
+#     new_marcs = copy.copy(marcs)
+#     if new_v2 == UNMAPPED:
+#         # zero out rows corresponding to the edges of new_v1
+#         for e1 in g1.get_edges(new_v1):
+#             new_marcs[e1] = 0
+#     else:
+#         # mask out every row in marcs
+#         mask = g2.get_edges_as_int(new_v2)
+#         antimask = ~mask
+#         for e1_idx, is_v1_edge in enumerate(g1.get_edges_as_vector(new_v1)):
+#             if is_v1_edge:
+#                 new_marcs[e1_idx] &= mask
+#             else:
+#                 new_marcs[e1_idx] &= antimask
+
+#     return new_marcs
+
+
 def refine_marcs(g1, g2, new_v1, new_v2, marcs):
     """
     return vertices that have changed
     """
     new_marcs = copy.copy(marcs)
+
     if new_v2 == UNMAPPED:
         # zero out rows corresponding to the edges of new_v1
         for e1 in g1.get_edges(new_v1):
             new_marcs[e1] = 0
     else:
         # mask out every row in marcs
-        mask = g2.get_edges_as_int(new_v2)
-        antimask = ~mask
+        # eg. returns [0,1,0,0,1,0,1]
+        mask = g2.get_edges_as_vector(new_v2)
+        # eg. returns [1,0,1,1,0,1,0]
+        antimask = 1 - mask
         for e1_idx, is_v1_edge in enumerate(g1.get_edges_as_vector(new_v1)):
             if is_v1_edge:
                 new_marcs[e1_idx] &= mask
@@ -160,7 +192,7 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, max_visits, max_cores):
     marcs = initialize_marcs_given_predicate(g_a, g_b, predicate)
 
     priority_idxs = tuple(tuple(x) for x in priority_idxs)
-    marcs = convert_matrix_to_bits(marcs)
+    # marcs = convert_matrix_to_bits(marcs)
     start_time = time.time()
 
     # run in reverse by guessing max # of edges to avoid getting stuck in minima.
@@ -260,9 +292,10 @@ def recursion(
         return
 
     num_edges = arcs_left(marcs)
-    num_edges_2 = arcs_left(transpose_marcs(marcs, g2.n_edges))
-    if (num_edges < threshold) or (num_edges_2 < threshold):
+    if num_edges < threshold:
         return
+    # elif arcs_left(transpose_marcs(marcs, g2.n_edges)) < threshold:
+    # return
 
     # old version
     # if num_edges < threshold:
