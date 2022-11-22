@@ -21,7 +21,8 @@ from bgl import mcgregor
 # has several clever tricks up its sleeve in that we:
 
 # - designed the method for free energy methods where the provided two molecules are aligned.
-# - actually prune and refine the row/cols of marcs (edge-edge mapping matrix) to remove subtrees, unlike boost::graph::mcgregor
+# - refine the row/cols of marcs (edge-edge mapping matrix) when a new atom-atom mapping is proposed
+# - prune by looking at maximum number of row edges and column edges, i.e. arcs_left min(max_row_edges, max_col_edges)
 # - only generate an atom-mapping between two mols, whereas RDKit generates a common substructure between N mols
 # - operate on anonymous graphs whose atom-atom compatibility depends on a predicates matrix, such that a 1 is when
 #   if atom i in mol_a is compatible with atom j in mol_b, and 0 otherwise. We do not implement a bond-bond compatibility matrix.
@@ -39,7 +40,7 @@ from bgl import mcgregor
 # This is entirely written in python, which lends to its ease of use and modifiability. The following optimizations were
 # implemented (without changing the number of nodes visited):
 # - multiple representations of graph structures to improve efficiency
-# - refinement of marcs matrix is now done via bit operations, whereby boolean vectors are encoded as simple python ints
+# - refinement of marcs matrix is done on uint8 arrays
 # - we avoid overhead associated with copying class instance, using primitives where possible
 # - tbd: add a way to terminate by iteration count as opposed to time, to avoid dealing with hardware differences.
 
@@ -144,7 +145,7 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connected_cor
     Returns
     -------
     2-tuple
-        Returns a list of all_cores, and a boolean flag indicating if a timeout was found. 
+        Returns a list of all_cores, and a boolean flag indicating if a timeout was found.
 
     """
 
@@ -185,11 +186,13 @@ def bfs(g, atom):
         levels_array[i] = l
     return levels_array
 
+
 def reorder_atoms_by_degree(mol):
     degrees = [len(a.GetNeighbors()) for a in mol.GetAtoms()]
     perm = np.argsort(degrees)[::-1]
     new_mol = Chem.RenumberAtoms(mol, perm.tolist())
     return new_mol, perm
+
 
 def reorder_atoms_by_jordan_center(mol):
     center_idx = get_jordan_center(mol)
@@ -198,6 +201,7 @@ def reorder_atoms_by_jordan_center(mol):
     perm = np.argsort(levels)
     new_mol = Chem.RenumberAtoms(mol, perm.tolist())
     return new_mol, perm
+
 
 def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connected_core, max_cores):
     # mol_a, perm = reorder_atoms_by_jordan_center(mol_a)  # this is disabled because its not too great

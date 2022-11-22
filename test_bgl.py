@@ -10,19 +10,20 @@ def get_mol_name(mol) -> str:
     """Return the title for the given mol"""
     return mol.GetProp("_Name")
 
+
 def run():
 
-    for idx, mol_a in enumerate(mols):
-        for mol_b in mols[idx + 1:]:
+    for idx, mol_a in enumerate(mols[:5]):
+        for mol_b in mols[idx + 1 : 5]:
 
             all_cores, _ = atom_mapping.get_cores(
                 mol_a,
                 mol_b,
                 ring_cutoff=0.1,
                 chain_cutoff=0.2,
-                max_visits=1e7, # 10 million max nodes to visit
+                max_visits=1e7,  # 10 million max nodes to visit
                 connected_core=False,
-                max_cores=1000000
+                max_cores=1000000,
             )
             # note that this is probably the bottleneck for hif2a
             # for core_idx, core in enumerate(all_cores):
@@ -33,10 +34,10 @@ def run():
             #     ) as fh:
             #         fh.write(res)
 
-
             print(
                 f"{mol_a.GetProp('_Name')} -> {mol_b.GetProp('_Name')} has {len(all_cores)} cores of size {len(all_cores[0])}"
             )
+
 
 import time
 
