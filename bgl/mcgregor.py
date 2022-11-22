@@ -45,6 +45,7 @@ def initialize_marcs_given_predicate(g1, g2, predicate):
     return marcs
 
 
+# old version that operates on bit flags
 # def refine_marcs(g1, g2, new_v1, new_v2, marcs):
 #     """
 #     return vertices that have changed
@@ -76,6 +77,7 @@ def refine_marcs(g1, g2, new_v1, new_v2, marcs):
     if new_v2 == UNMAPPED:
         # zero out rows corresponding to the edges of new_v1
         for e1 in g1.get_edges(new_v1):
+            # this is equivalent to new_marcs[e1] = np.zeros(marcs.shape[1])
             new_marcs[e1] = 0
     else:
         # mask out every row in marcs
@@ -294,19 +296,12 @@ def recursion(
     num_edges = arcs_left(marcs)
     if num_edges < threshold:
         return
-    # elif arcs_left(transpose_marcs(marcs, g2.n_edges)) < threshold:
-    # return
-
-    # old version
-    # if num_edges < threshold:
-    # return
 
     mcs_result.nodes_visited += 1
     n_a = g1.n_vertices
 
     # leaf-node, every atom has been mapped
     if layer == n_a:
-        # assert num_edges == num_edges_2
         if num_edges == threshold:
             mcs_result.all_maps.append(copy.copy(atom_map_1_to_2))
             mcs_result.num_edges = num_edges
