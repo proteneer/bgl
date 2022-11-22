@@ -24,15 +24,16 @@ def run():
                 max_visits=1e7,  # 10 million max nodes to visit
                 connected_core=False,
                 max_cores=1000000,
+                enforce_core_core=True,
             )
             # note that this is probably the bottleneck for hif2a
-            # for core_idx, core in enumerate(all_cores):
-            #     res = atom_mapping.plot_atom_mapping_grid(mol_a, mol_b, core, num_rotations=5)
+            for core_idx, core in enumerate(all_cores):
+                res = atom_mapping.plot_atom_mapping_grid(mol_a, mol_b, core, num_rotations=5)
 
-            #     with open(
-            #         f"atom_mapping_{get_mol_name(mol_a)}_to_{get_mol_name(mol_b)}_core_{core_idx}.svg", "w"
-            #     ) as fh:
-            #         fh.write(res)
+                with open(
+                    f"atom_mapping_{get_mol_name(mol_a)}_to_{get_mol_name(mol_b)}_core_{core_idx}.svg", "w"
+                ) as fh:
+                    fh.write(res)
 
             print(
                 f"{mol_a.GetProp('_Name')} -> {mol_b.GetProp('_Name')} has {len(all_cores)} cores of size {len(all_cores[0])}"

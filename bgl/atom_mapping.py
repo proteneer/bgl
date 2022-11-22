@@ -102,7 +102,7 @@ def get_romol_bonds(mol):
     return np.array(bonds, dtype=np.int32)
 
 
-def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connected_core, max_cores):
+def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connected_core, max_cores, enforce_core_core):
     """
     Finds set of cores between two molecules that maximizes the number of common edges.
 
@@ -142,6 +142,9 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connected_cor
         maximum number of maximal cores to store, this can be an +np.inf if you want
         every core - when set to 1 this enables a faster predicate that allows for more pruning.
 
+    enforce_core_core: int
+        If we allow core-core bonds to be broken. This may be deprecated later on.
+
     Returns
     -------
     2-tuple
@@ -154,7 +157,7 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connected_cor
     # we require that mol_a.GetNumAtoms() <= mol_b.GetNumAtoms()
     if mol_a.GetNumAtoms() > mol_b.GetNumAtoms():
         all_cores, timed_out = _get_cores_impl(
-            mol_b, mol_a, ring_cutoff, chain_cutoff, max_visits, connected_core, max_cores
+            mol_b, mol_a, ring_cutoff, chain_cutoff, max_visits, connected_core, max_cores, enforce_core_core
         )
         new_cores = []
         for core in all_cores:
@@ -163,7 +166,7 @@ def get_cores(mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connected_cor
         return new_cores, timed_out
     else:
         all_cores, timed_out = _get_cores_impl(
-            mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connected_core, max_cores
+            mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connected_core, max_cores, enforce_core_core
         )
         return all_cores, timed_out
 
@@ -203,7 +206,7 @@ def reorder_atoms_by_jordan_center(mol):
     return new_mol, perm
 
 
-def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connected_core, max_cores):
+def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connected_core, max_cores, enforce_core_core):
     # mol_a, perm = reorder_atoms_by_jordan_center(mol_a)  # this is disabled because its not too great
     mol_a, perm = reorder_atoms_by_degree(mol_a)  # UNINVERT
 
@@ -241,7 +244,9 @@ def _get_cores_impl(mol_a, mol_b, ring_cutoff, chain_cutoff, max_visits, connect
     n_a = len(conf_a)
     n_b = len(conf_b)
 
-    all_cores, timed_out = mcgregor.mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, max_visits, max_cores)
+    all_cores, timed_out = mcgregor.mcs(
+        n_a, n_b, priority_idxs, bonds_a, bonds_b, max_visits, max_cores, enforce_core_core
+    )
 
     if connected_core:
         all_cores = remove_disconnected_components(mol_a, mol_b, all_cores)
