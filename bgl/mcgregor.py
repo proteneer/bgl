@@ -3,6 +3,7 @@ import numpy as np
 import copy
 import time
 
+
 def arcs_left(marcs):
     sum = 0
     for r in marcs:
@@ -10,7 +11,9 @@ def arcs_left(marcs):
     return sum
     # the above python loop is faster than np.count_nonzero(marcs)
 
+
 UNMAPPED = -1
+
 
 def initialize_marcs_given_predicate(g1, g2, predicate):
     num_a_edges = g1.n_edges
@@ -64,12 +67,14 @@ class MCSResult:
         self.timed_out = False
         self.nodes_visited = 0
 
+
 def convert_matrix_to_bits(arr):
     res = []
     for row in arr:
         seq = "".join([str(x) for x in row.tolist()])
         res.append(int(seq, 2))
     return res
+
 
 class Graph:
     def __init__(self, n_vertices, edges):
@@ -139,8 +144,10 @@ def build_predicate_matrix(n_a, n_b, priority_idxs):
             pmat[idx][jdx] = 1
     return pmat
 
+
 class MaxVisitsError(Exception):
     pass
+
 
 def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, max_visits, max_cores):
 
@@ -164,7 +171,18 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, max_visits, max_cores):
         map_b_to_a = [UNMAPPED] * n_b
         mcs_result = MCSResult()
         recursion(
-            g_a, g_b, map_a_to_b, map_b_to_a, 0, marcs, mcs_result, priority_idxs, start_time, max_visits, max_cores, cur_threshold
+            g_a,
+            g_b,
+            map_a_to_b,
+            map_b_to_a,
+            0,
+            marcs,
+            mcs_result,
+            priority_idxs,
+            start_time,
+            max_visits,
+            max_cores,
+            cur_threshold,
         )
 
         if mcs_result.timed_out:
@@ -172,12 +190,16 @@ def mcs(n_a, n_b, priority_idxs, bonds_a, bonds_b, max_visits, max_cores):
 
         if len(mcs_result.all_maps) > 0:
             # don't remove this comment and the one below, useful for debugging!
-            # print(f"==SUCCESS==[NODES VISITED {mcs_result.nodes_visited} | CORE_SIZE {len([x != UNMAPPED for x in mcs_result.all_maps[0]])} | NUM_CORES {len(mcs_result.all_maps)} | NUM_EDGES {mcs_result.num_edges} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
+            print(
+                f"==SUCCESS==[NODES VISITED {mcs_result.nodes_visited} | CORE_SIZE {len([x != UNMAPPED for x in mcs_result.all_maps[0]])} | NUM_CORES {len(mcs_result.all_maps)} | NUM_EDGES {mcs_result.num_edges} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]====="
+            )
             break
-        # else:
-            # print(f"==FAILED==[NODES VISITED {mcs_result.nodes_visited} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]=====")
+        else:
+            print(
+                f"==FAILED==[NODES VISITED {mcs_result.nodes_visited} | time taken: {time.time()-start_time} | time out? {mcs_result.timed_out}]====="
+            )
 
-    assert(len(mcs_result.all_maps) > 0)
+    assert len(mcs_result.all_maps) > 0
 
     all_cores = []
 
@@ -202,6 +224,19 @@ def atom_map_pop(map_1_to_2, map_2_to_1, idx, jdx):
     map_2_to_1[jdx] = UNMAPPED
 
 
+def transpose_marcs(marcs, n_cols):
+    new_marcs = []
+    n_rows = len(marcs)
+    for col in range(n_cols):
+        col_mask = 1 << col
+        accumulant = 0
+        for row_idx, row in enumerate(marcs):
+            flag = int(row & col_mask > 0)
+            accumulant |= flag << (n_rows - row_idx - 1)
+        new_marcs.append(accumulant)
+    return new_marcs[::-1]
+
+
 def recursion(
     g1,
     g2,
@@ -216,7 +251,6 @@ def recursion(
     max_cores,
     threshold,
 ):
-    mcs_result.nodes_visited += 1
 
     if mcs_result.nodes_visited > max_visits:
         mcs_result.timed_out = True
@@ -226,14 +260,20 @@ def recursion(
         return
 
     num_edges = arcs_left(marcs)
-
-    if num_edges < threshold:
+    num_edges_2 = arcs_left(transpose_marcs(marcs, g2.n_edges))
+    if (num_edges < threshold) or (num_edges_2 < threshold):
         return
 
+    # old version
+    # if num_edges < threshold:
+    # return
+
+    mcs_result.nodes_visited += 1
     n_a = g1.n_vertices
 
     # leaf-node, every atom has been mapped
     if layer == n_a:
+        # assert num_edges == num_edges_2
         if num_edges == threshold:
             mcs_result.all_maps.append(copy.copy(atom_map_1_to_2))
             mcs_result.num_edges = num_edges
